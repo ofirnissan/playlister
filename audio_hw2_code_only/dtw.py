@@ -12,14 +12,8 @@ class Distance:
 
 
 class DTW:
-    def __init__(self, class_representative_name, mel_spec_dict):
-        self.class_representative_name = class_representative_name
-        self.mel_spec_dict = mel_spec_dict
-
-    def calculate_dtw_distance(self, speaker, digit, class_representative_digit, normalize_length=False):
-        mel_spec_1 = self.mel_spec_dict[speaker][digit]
-        mel_spec_2 = self.mel_spec_dict[self.class_representative_name][class_representative_digit]
-
+    def calculate_dtw_distance(self, mel_spec_1, mel_spec_2, normalize_length=True):
+        
         distance_obj = Distance(mel_spec_1, mel_spec_2)
 
         dtw_matrix = np.zeros((mel_spec_1.shape[1], mel_spec_2.shape[1]))
