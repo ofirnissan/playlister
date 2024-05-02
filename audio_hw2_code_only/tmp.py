@@ -58,11 +58,18 @@ for i in range(len(prefixes)):
         mel_specs = get_mel_spec_dict([audio1, audio2])
 
         # Create a DTW object
-        dtw = DTW()
-        dtw_distance = dtw.calculate_dtw_distance(mel_specs[0], mel_specs[1])
-        print(f'Comparing {prefixes[i]} and {prefixes[j]}: ')
+        # dtw = DTW()
+        # dtw_distance = dtw.calculate_dtw_distance(mel_specs[0], mel_specs[1])
+        dtw_matrix, wp = librosa.sequence.dtw(mel_specs[0], mel_specs[1], subseq=True)
+        fig, ax = plt.subplots()
+        img = librosa.display.specshow(dtw_matrix, x_axis='frames', y_axis='frames', ax=ax)
+        ax.set(title='DTW cost', xlabel=f'{prefixes[i]}', ylabel=f'{prefixes[j]}')
+        ax.plot(wp[:, 1], wp[:, 0], label='Optimal path', color='y')
+        ax.legend()
+        fig.colorbar(img, ax=ax)
+        plt.savefig(f'dtw_{k}.png')
         k+=1
-        print(dtw_distance)
+        print(dtw_matrix)
 
 print(k)
         
