@@ -12,10 +12,10 @@ class Song:
     def __init__(self, filepath, epsilon=0, remove_zero_amp=True, sr=48000, win_length_sec=0.02, hop_length_sec=0.01):
         self.song_name = filepath.split(os.sep)[-1].split('.')[0]
         self.file_type = filepath.split(os.sep)[-1].split('.')[1]
-
+    
         self.sr = None
         self.audio = None
-
+        self.partial_audio_time_in_sec = 30
         self.suffix_vocals = None # type: Song
         self.prefix_vocals = None # type: Song
         self.suffix_accompaniment = None # type: Song
@@ -64,14 +64,14 @@ class Song:
     def get_partial_chroma_stft(self, start_sec=None, end_sec=None):
         audio = self.get_partial_audio(start_sec, end_sec)
         return self.get_chroma_stft(audio)
+    
+    def find_vocals_and_accompaniment_for_suffix_and_prefix(self):
+        self.find_vocals_and_accompaniment(suffix=True)
+        self.find_vocals_and_accompaniment(suffix=False)
 
 
-    def find_vocals_and_accompaniment_for_suffix_and_prefix(self, time_in_sec=30):
-        self.find_vocals_and_accompaniment(time_in_sec=time_in_sec, suffix=True)
-        self.find_vocals_and_accompaniment(time_in_sec=time_in_sec, suffix=False)
-
-
-    def find_vocals_and_accompaniment(self, time_in_sec=30, suffix=True):
+    def find_vocals_and_accompaniment(self, suffix=True):
+        time_in_sec = self.partial_audio_time_in_sec
         separator = Separator('spleeter:2stems')
         suffix_or_prefix = "suffix" if suffix else "prefix"
 
