@@ -7,7 +7,7 @@ class Song:
         self.song_name = filepath.split(os.sep)[-1].split('.')
         self.sr = None
         self.audio = None
-
+        self.audio_path = filepath
         self._load_audio(filepath)
 
         if remove_zero_amp:
