@@ -1,13 +1,10 @@
 from song_handler import Song
 import soundfile as sf
 import librosa
-import matplotlib.pyplot as plt
 import numpy as np
-import tensorflow as tf
 import sys
 sys.path.append("playlister/audio_hw2_code_only")
 from plotter import Plotter
-import math
 
 
 home_dir_path = "/mnt/c/Users/ofirn/Documents/oni/elec/playlister"
@@ -30,11 +27,15 @@ def find_silent_intervals_of_partial(song: Song, threshold=0, min_time_interval_
 
 def find_silent_intervals_of_suffix_and_prefix(song: Song, threshold=0, min_time_interval_length=2):
     suffix_scilent_intervals = find_silent_intervals_of_partial(song, threshold, min_time_interval_length, suffix=True)
+    if len(suffix_scilent_intervals) == 0:
+        suffix_scilent_intervals = [(song.partial_audio_time_in_sec-min_size_of_time_interval, song.partial_audio_time_in_sec)]
     prefix_scilent_intervals = find_silent_intervals_of_partial(song, threshold, min_time_interval_length, suffix=False)
+    if len(prefix_scilent_intervals) == 0:
+        prefix_scilent_intervals = [(0, min_size_of_time_interval)]
     return prefix_scilent_intervals, suffix_scilent_intervals
 
 
-def concat_between_songs_post_spleeter(song1: Song, song2: Song):
+def concat_between_songs_post_spleeter(song1: Song, song2: Song, song_builder: Song = None):
     assert song1.sr == song2.sr, "sample rate should be the same in both songs"
     # Get scilent time intervals of prefix and suffix of both songs:
     song1_prefix_scilent_intervals, song1_suffix_scilent_intervals = find_silent_intervals_of_suffix_and_prefix(\
@@ -44,8 +45,8 @@ def concat_between_songs_post_spleeter(song1: Song, song2: Song):
     # Get accompaniment of prefix and suffix of both songs:
     chroma_suffix_song1 = song1.suffix_accompaniment.get_partial_chroma_stft(start_sec=song1_suffix_scilent_intervals[0][0],\
                                                          end_sec=song1_suffix_scilent_intervals[0][1])
-    chroma_prefix_song2 = song2.prefix_accompaniment.get_partial_chroma_stft(start_sec=song2_prefix_scilent_intervals[0][0],\
-                                                                             end_sec=song2_prefix_scilent_intervals[0][1])
+    chroma_prefix_song2 = song2.prefix_accompaniment.get_partial_chroma_stft(start_sec=song2_prefix_scilent_intervals[-1][0],\
+                                                                             end_sec=song2_prefix_scilent_intervals[-1][1])
 
     dtw_cost_matrix, wp = librosa.sequence.dtw(chroma_suffix_song1, chroma_prefix_song2, subseq=True)  # wp is the Warping path
     # Get the index of the minimum cost in the path
@@ -57,16 +58,33 @@ def concat_between_songs_post_spleeter(song1: Song, song2: Song):
     suffix_cut_frame, prefix_cut_frame = wp[idx]
     prefix_cut_audio_index = prefix_cut_frame * 512
     suffix_cut_audio_index = suffix_cut_frame * 512
-    first = song1.get_partial_audio(end_sec=len(song1.audio)/song1.sr - song1.partial_audio_time_in_sec + song1_suffix_scilent_intervals[0][0] + suffix_cut_audio_index/song1.sr)
-    second = song2.get_partial_audio(prefix_cut_audio_index/song2.sr + song2_prefix_scilent_intervals[0][0])
+    first_song = song_builder if song_builder is not None else song1
+    first = first_song.get_partial_audio(end_sec=len(first_song.audio)/song1.sr - song1.partial_audio_time_in_sec + song1_suffix_scilent_intervals[0][0] + suffix_cut_audio_index/song1.sr)
+    second = song2.get_partial_audio(prefix_cut_audio_index/song2.sr + song2_prefix_scilent_intervals[-1][0])
     new_audio = fadeout_cur_fadein_next(first, second, song1.sr, duration=3.0)
 
+    sf.write('concat_song.wav', new_audio, first_song.sr)
+
+    new_song = Song('/mnt/c/Users/ofirn/Documents/oni/elec/playlister/concat_song.wav')
+    # new_song.prefix_accompaniment = first_song.prefix_accompaniment
+    # new_song.prefix_vocals = first_song.prefix_vocals
+    # new_song.suffix_accompaniment = song2.suffix_accompaniment
+    # new_song.suffix_vocals = song2.suffix_vocals
+
+    return new_song
+
     # Save the new audio
-    sf.write('concat_song.wav', new_audio, song1.sr)
+    # sf.write('concat_song.wav', new_audio, song1.sr)
+
+
+def organize_song_list_using_tempo(songs):
+    # Sort the songs by tempo
+    songs = sorted(songs, key=lambda x: x.tempo)
+    print([song.song_name for song in songs])
+    return songs
 
 
 def fadeout_cur_fadein_next(audio1, audio2, sr, duration=3.0):
-    duration = 3.0
     apply_fadeout(audio1, sr, duration)
     apply_fadein(audio2, sr, duration)
     length = int(duration*sr)
@@ -96,7 +114,9 @@ def apply_fadein(audio, sr, duration=3.0):
     audio[:length] = audio[:length] * fade_curve
 
 if __name__ == '__main__':
-    song_names = ["Incubus - Drive", "bahaim hakol over"]
+    # , 'Incubus - Drive', 'biladaih'
+    song_names = ['bahaim hakol over', 'Green Eyes', 'In My Place', 'mi im lo ani']
+    # song_names = ['Incubus - Drive', 'biladaih']
     songs = []
     for song_name in song_names:
         song = Song(f"/mnt/c/Users/ofirn/Music/songs/{song_name}.mp3")
@@ -121,5 +141,11 @@ if __name__ == '__main__':
         # suffix_song.plotter.plot_energy_and_rms(threshold=0, plot_rms=True, title="Q3.a.i")
         # suffix_song.plotter.plot_mel_spectogram()
     
-    concat_between_songs_post_spleeter(songs[0], songs[1])
+    
+    new_song = concat_between_songs_post_spleeter(songs[0], songs[1])
+    new_song = concat_between_songs_post_spleeter(songs[1], songs[2], song_builder=new_song)
+    new_song = concat_between_songs_post_spleeter(songs[2], songs[3], song_builder=new_song)
+    # save to wav
+    sf.write('concat_song.wav', new_song.audio, new_song.sr)
+    # organize_song_list_using_tempo(songs)
     

@@ -1,7 +1,6 @@
 import os
 import librosa
 import numpy as np
-from spleeter.separator import Separator
 import soundfile as sf
 import sys
 sys.path.append("playlister/audio_hw2_code_only")
@@ -31,7 +30,7 @@ class Song:
         self.audio_path = filepath
         self._load_audio(filepath, sr=sr)
         self.plotter = Plotter(self.audio, self.sr)
-
+        # self.tempo = librosa.beat.tempo(y=self.audio, sr=16000)[0]
         if remove_zero_amp:
             self.remove_zero_amplitude(epsilon=epsilon)
 
@@ -71,6 +70,7 @@ class Song:
 
 
     def find_vocals_and_accompaniment(self, suffix=True):
+        from spleeter.separator import Separator
         time_in_sec = self.partial_audio_time_in_sec
         separator = Separator('spleeter:2stems')
         suffix_or_prefix = "suffix" if suffix else "prefix"
