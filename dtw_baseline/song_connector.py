@@ -3,11 +3,25 @@ import soundfile as sf
 import librosa
 import matplotlib.pyplot as plt
 import numpy as np
+from spleeter.separator import Separator
+from audio_hw2_code_only.plotter import Plotter
 
 
 def find_min_pair_of_cost_matrix_trace(dtw_cost_matrix, wp):
     trace_data = dtw_cost_matrix[wp[:, 0], wp[:, 1]]
     return wp[trace_data.argmin()]
+
+
+def find_vocals_and_accompaniment(song: Song):
+    time_in_sec = 60
+    path = f'audio_to_split_{time_in_sec}_sec.wav'
+    song_audio = song.get_partial_audio(start_sec=0, end_sec=time_in_sec)
+    sf.write(path, song_audio, song.sr)
+    separator = Separator('spleeter:2stems')
+    separator.separate_to_file(path, 'output')
+    vocal, _ = librosa.load('output/vocals.wav', sr=song.sr)
+    accompaniment, _ = librosa.load('output/accompaniment.wav', sr=song.sr)
+    return vocal, accompaniment
 
 
 def connect_between_songs_chroma_feature(song1: Song, song2: Song, show_cost_matrix_and_wp=False):
@@ -36,6 +50,16 @@ def connect_between_songs_chroma_feature(song1: Song, song2: Song, show_cost_mat
 
 
 if __name__ == '__main__':
-    song1 = Song("../songs/lev_shel_gever.mp3")
-    song2 = Song("../songs/biladaih.mp3")
-    connect_between_songs_chroma_feature(song1, song2)
+    song1 = Song("/mnt/c/Users/ofirn/Music/songs/Clocks.mp3")
+    # song2 = Song("../songs/biladaih.mp3")
+    # connect_between_songs_chroma_feature(song1, song2)
+    #find_vocals_and_accompaniment(song1)
+    vocal = Song("output/vocals.wav")
+    seconds = np.array(range(len(vocal.audio))) / vocal.sr
+    plt.plot(seconds, vocal.audio)
+    plt.set_title('Audio')
+    plt.set_xlabel('Time [secs]')
+    plt.set_ylabel('Amplitude')
+    plt.show()
+
+
