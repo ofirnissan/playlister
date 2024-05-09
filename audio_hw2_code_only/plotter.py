@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import librosa
-import parselmouth
 
 
 class Plotter:
@@ -19,6 +18,7 @@ class Plotter:
         ax.set_ylabel('Amplitude')
 
     def _draw_pitch(self, ax):
+        import parselmouth
         sound = parselmouth.Sound(self.audio, sampling_frequency=self.sr)
         pitch = sound.to_pitch()
         pitch_values = pitch.selected_array['frequency']

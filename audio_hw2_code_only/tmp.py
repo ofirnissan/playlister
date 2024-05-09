@@ -6,6 +6,9 @@ import librosa.display
 import os
 import soundfile as sf
 from dtw import *
+import webrtcvad
+import contextlib
+import wave
 
 music_path = r'C:\Users\ofirn\Music\songs'
 
@@ -71,8 +74,57 @@ for i in range(len(prefixes)):
         k+=1
         print(dtw_matrix)
 
+
+
+
+def convert_mp3_to_wav(mp3_path, wav_path):
+    audio, sr = librosa.load(mp3_path, sr=48000)
+    sf.write(wav_path, audio, sr)
+
+
+def read_wave(path):
+    """Reads a .wav file.
+
+    Takes the path, and returns (PCM audio data, sample rate).
+    """
+    with contextlib.closing(wave.open(path, 'rb')) as wf:
+        num_channels = wf.getnchannels()
+        assert num_channels == 1
+        sample_width = wf.getsampwidth()
+        assert sample_width == 2
+        sample_rate = wf.getframerate()
+        assert sample_rate in (8000, 16000, 32000, 48000)
+        pcm_data = wf.readframes(wf.getnframes())
+        return pcm_data, sample_rate
+    
+
+def check_vocals_intervals_in_song(path):
+    audio, sr =read_wave(path)
+    vad = webrtcvad.Vad(3)   
+    frame_duration = 10  # ms
+    frame_size = int(sr * (frame_duration / 1000)*2)
+    frames = [audio[i: i + frame_size] for i in range(0, len(audio), frame_size)]
+    vocals_intervals = []
+    for i, frame in enumerate(frames):
+        if (len(frame) < frame_size):
+            # add silence to the end of the frame
+            bytes_to_add = b'\x00' * (frame_size - len(frame))
+            frame += bytes_to_add
+        frame = frame
+        if not vad.is_speech(frame, sr):
+            if not vocals_intervals or vocals_intervals[-1][1] != i - 1:
+                vocals_intervals.append([i, i])
+            else:
+                vocals_intervals[-1][1] = i
+    # convert frames to seconds
+    vocals_intervals = [[interval[0] * frame_duration / 1000, interval[1] * frame_duration / 1000] for interval in vocals_intervals]
+    return vocals_intervals
+
+
 print(k)
         
+
+
 
 
 #TODO
