@@ -104,3 +104,9 @@ class Plotter:
         self._add_spectogram_plot(fig, ax)
         plt.title(title)
         plt.show()
+
+    def plot_audio(self, title='Audio'):
+        fig, ax = plt.subplots()
+        self._add_audio_plot(ax)
+        plt.title(title)
+        plt.show()
