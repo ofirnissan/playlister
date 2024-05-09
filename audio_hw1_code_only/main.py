@@ -156,7 +156,7 @@ if __name__ == '__main__':
     # a ----------------------
     noise_threshold = -10
     noise_and_signal_plotter.plot_energy_and_rms(noise_threshold, plot_rms=False, title="Q3.a.i") if plot else None
-
+    # vocal_samples = audio > noise_threshold
     # b ----------------------
     noise_reduction_signal, noise_audio = spectral_subtraction(noise_and_signal_16_2, noise_threshold)
 

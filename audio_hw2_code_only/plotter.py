@@ -72,7 +72,7 @@ class Plotter:
         if plot_rms:
             ax.plot([0, t[-1]], [rms, rms], label='rms')
 
-        if threshold:
+        if threshold is not None:
             ax.plot([0, t[-1]], [threshold, threshold], label='threshold')
         ax.set_title('Energy and RMS')
         ax.set_xlabel('Time [secs]')
