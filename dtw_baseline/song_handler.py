@@ -34,6 +34,7 @@ class Song:
         if remove_zero_amp:
             self.remove_zero_amplitude(epsilon=epsilon)
         self.plotter = Plotter(self.audio, self.sr)
+        self.audio_length = len(self.audio) / sr
         self.tempo = None
 
 
@@ -51,7 +52,7 @@ class Song:
     def get_mel_spec(self, audio):
         return librosa.feature.melspectrogram(y=audio, sr=self.sr)
 
-    def get_partial_audio(self, start_sec=None, end_sec=None):
+    def get_partial_audio(self, start_sec=None, end_sec=None, audio=None):
         start_index = int(self.sr * start_sec) if start_sec is not None else 0
         end_index = int(self.sr * end_sec) if end_sec is not None else len(self.audio)
         return self.audio[start_index: end_index]
@@ -83,7 +84,6 @@ class Song:
         
     
     def find_vocals_and_accompaniment_for_suffix_and_prefix(self, dir_path=None):
-        assert self.seperator is not None, "Please provide a seperator object"
         # if dir path is not None search for the vocals and accompaniment in the given directory of both suffix and prefix
         if dir_path is not None:
             vocals_suffix_path = os.path.join(dir_path, f'suffix_{self.partial_audio_time_in_sec}_sec/vocals.wav')
@@ -100,6 +100,7 @@ class Song:
                 self.prefix_accompaniment = Song(accompaniment_prefix_path, remove_zero_amp=False)
                 return
         # if dir path is None or the files do not exist in the given directory
+        assert self.seperator is not None, "Please provide a seperator object"
         self.find_vocals_and_accompaniment(suffix=True)
         self.find_vocals_and_accompaniment(suffix=False)
 
