@@ -2,33 +2,31 @@ import os
 
 import numpy as np
 from transformers import JukeboxModel, JukeboxConfig, JukeboxPriorConfig, JukeboxPrior, JukeboxVQVAE
-from song_handler import Song
+from dtw_baseline.song_handler import Song
 import soundfile as sf
 import torch
 
 FADE_DURATION = 3.0
+NUMBER_OF_CODEBOOKS = 4
 
 
 def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, token_sequence_2, model, text_tokens):
     tokens = torch.cat([token_sequence_1, token_sequence_2], dim=-1)
 
+    text_tokens = torch.tile(text_tokens, (tokens.shape[0]//NUMBER_OF_CODEBOOKS, 1))
     with torch.no_grad():
         outputs = model(input_ids=text_tokens, decoder_input_ids=tokens)
         logits = outputs.logits
 
-    log_sum = 0
-    range_index = range(max(token_sequence_1.shape[1] - 1, 0), tokens.shape[1] - 1)
-    for i in range_index:
-        past_tok, current_tok = i, i + 1
-        log_token_prob = 0
-        for token_dim_index in range(1):
-            token_logit = logits[token_dim_index, past_tok, :]
-            token_log_probs = torch.nn.functional.log_softmax(token_logit, dim=-1)
-            log_token_prob += token_log_probs[tokens[token_dim_index, current_tok]].item()
+    sequence_2_logits = logits[:, -token_sequence_2.shape[1] - 1:-1]
+    sequence_2_logmax = torch.nn.functional.log_softmax(sequence_2_logits, dim=-1)
 
-        log_sum += log_token_prob
-        # print(f"Token, Log Prob: {log_token_prob}")
-    return log_sum
+    # get the probability for the specific sequence
+    sequence_2_logmax = sequence_2_logmax.reshape((token_sequence_2.shape[0]*token_sequence_2.shape[1], 2048))[
+        range(token_sequence_2.shape[0]*token_sequence_2.shape[1]),
+        token_sequence_2.reshape(token_sequence_2.shape[0]*token_sequence_2.shape[1])].reshape(token_sequence_2.shape[0],token_sequence_2.shape[1])
+
+    return sequence_2_logmax[range(0, logits.shape[0], NUMBER_OF_CODEBOOKS)]
 
 
 def calculate_log_prob_of_sequence_given_another_sequence_method_2(token_sequence_1, token_sequence_2, model):
@@ -37,14 +35,13 @@ def calculate_log_prob_of_sequence_given_another_sequence_method_2(token_sequenc
 
 def connect_between_songs_first_try(song1: Song, song2: Song):
     assert song1.sr == song2.sr
-    from transformers import AutoProcessor, MusicgenModel, AutoTokenizer, MusicgenForConditionalGeneration
+    from transformers import AutoTokenizer, MusicgenForConditionalGeneration
 
-    processor = AutoProcessor.from_pretrained("facebook/musicgen-small")
     tokenizer = AutoTokenizer.from_pretrained("facebook/musicgen-small")
     model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
 
     audio_encoder = model.audio_encoder
-    text_tokens = tokenizer.encode("")
+    text_tokens = [tokenizer.pad_token_id]
     text_tokens = torch.tensor(text_tokens).reshape((1, len(text_tokens)))
 
     prefix = song2.get_partial_audio(end_sec=30)
@@ -57,43 +54,53 @@ def connect_between_songs_first_try(song1: Song, song2: Song):
     window_size_samples_suffix = 200  # 4 sec/ 0.02
     window_size_samples_prefix = 100  # 2 sec/ 0.02
 
-    best_prob = -np.inf
-    best_tuple = None
+    tuples = []
+    partial_suffix_tokens_batched = torch.tensor([], dtype=torch.int)
+    partial_prefix_tokens_batched = torch.tensor([], dtype=torch.int)
+
     for i1 in range(0, suffix_tokens.audio_codes.shape[-1] - window_size_samples_suffix, hop_size_samples):
         for i2 in range(0, prefix_tokens.audio_codes.shape[-1] - window_size_samples_prefix, hop_size_samples):
             print(f'{i1, i2} / {suffix_tokens.audio_codes.shape[-1] - window_size_samples_suffix, prefix_tokens.audio_codes.shape[-1] - window_size_samples_prefix}')
+
+            transition_energy, _ = song1.get_audio_energy_array(
+                song1.get_partial_audio(start_sec=-30 + (i1 + window_size_samples_suffix)*0.02 - 1,
+                                        end_sec=-30 + (i1 + window_size_samples_suffix)*0.02))
+            if np.mean(transition_energy) < 0:
+                continue
+
+            transition_energy, _ = song2.get_audio_energy_array(
+                song2.get_partial_audio(start_sec=i2 * 0.02, end_sec=i2 * 0.02 + 1))
+            if np.mean(transition_energy) < 0:
+                continue
+            tuples.append((i1, i2))
             partial_suffix_tokens = suffix_tokens.audio_codes[..., i1:i1+window_size_samples_suffix][0, 0]
             partial_prefix_tokens = prefix_tokens.audio_codes[..., i2:i2+window_size_samples_prefix][0, 0]
-            log_sum = calculate_log_prob_of_sequence_given_another_sequence(partial_suffix_tokens, partial_prefix_tokens, model, text_tokens)
-            print(f"Total Log Sum Probability: {log_sum}")
 
-            if log_sum > best_prob:
-                best_prob = log_sum
-                best_tuple = (i1, i2)
-                print("FOUND NEW BEST TUPLE !")
-                concat_audio = np.concatenate(
-                    [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02),
-                     song2.get_partial_audio(start_sec=best_tuple[1] * 0.02)])
-                sf.write(f'{song1.song_name} + {song2.song_name}_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
+            partial_suffix_tokens_batched = torch.cat([partial_suffix_tokens_batched, partial_suffix_tokens], dim=0)
+            partial_prefix_tokens_batched = torch.cat([partial_prefix_tokens_batched, partial_prefix_tokens], dim=0)
 
-                concat_audio = np.concatenate(
-                    [song1.get_partial_audio(start_sec=len(song1.audio) / song1.sr - 30 + best_tuple[0] * 0.02,
-                                             end_sec=len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02),
-                     song2.get_partial_audio(start_sec=best_tuple[1] * 0.02,
-                                             end_sec=best_tuple[1] * 0.02 + window_size_samples_prefix * 0.02)])
-                sf.write(f'{song1.song_name} + {song2.song_name}_partial_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
+    log_sum = calculate_log_prob_of_sequence_given_another_sequence(partial_suffix_tokens_batched,
+                                                                    partial_prefix_tokens_batched, model, text_tokens)
 
-        print(f'Best indices: {best_tuple}')
-    # concat_audio = np.concatenate(
-    #     [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - 30 + best_tuple[0]*0.02),
-    #      song2.get_partial_audio(start_sec=best_tuple[1]*0.02)])
+    best_prob = np.max(log_sum)
+    print(f"Total Log Sum Probability: {best_prob}")
+    best_tuple = tuples[np.argmax(log_sum)]
+    print(f"Best tuple: {best_tuple}")
 
-    concat_audio = fadeout_cur_fadein_next(
-        song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02 + FADE_DURATION /2, len(song1.audio))),
-        song2.get_partial_audio(start_sec=max(best_tuple[1]*0.02 - FADE_DURATION /2, 0)), song1.sr,
-        duration=FADE_DURATION)
+    concat_audio = np.concatenate(
+        [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02),
+         song2.get_partial_audio(start_sec=best_tuple[1] * 0.02)])
+    sf.write(f'{song1.song_name} + {song2.song_name}_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
+    sf.write(f'{song1.song_name} + {song2.song_name}_no_fader.wav', concat_audio, song1.sr)
 
-    sf.write(f'{song1.song_name} + {song2.song_name}_long_fader_more_audio.wav', concat_audio, song1.sr)
+    concat_audio = np.concatenate(
+        [song1.get_partial_audio(start_sec=len(song1.audio) / song1.sr - 30 + best_tuple[0] * 0.02,
+                                 end_sec=len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02),
+         song2.get_partial_audio(start_sec=best_tuple[1] * 0.02,
+                                 end_sec=best_tuple[1] * 0.02 + window_size_samples_prefix * 0.02)])
+    sf.write(f'{song1.song_name} + {song2.song_name}_partial_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
+
+    print(f'Best indices: {best_tuple}')
 
     concat_audio = fadeout_cur_fadein_next(
         song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02, len(song1.audio))),
@@ -103,18 +110,11 @@ def connect_between_songs_first_try(song1: Song, song2: Song):
     sf.write(f'{song1.song_name} + {song2.song_name}_long_fader.wav', concat_audio, song1.sr)
 
     concat_audio = fadeout_cur_fadein_next(
-        song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02 + 2 /2, len(song1.audio))),
-        song2.get_partial_audio(start_sec=max(best_tuple[1]*0.02 - 2 /2, 0)), song1.sr,
-        duration=2)
+        song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02, len(song1.audio))),
+        song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
+        duration=1)
 
-    sf.write(f'{song1.song_name} + {song2.song_name}_short_fader_more_audio.wav', concat_audio, song1.sr)
-
-    concat_audio = np.concatenate(
-        [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - 30 + (
-                                             best_tuple[0] + window_size_samples_suffix) * 0.02),
-         song2.get_partial_audio(start_sec=best_tuple[1] * 0.02)])
-
-    sf.write(f'{song1.song_name} + {song2.song_name}_no fader.wav', concat_audio, song1.sr)
+    sf.write(f'{song1.song_name} + {song2.song_name}_short_fader.wav', concat_audio, song1.sr)
 
 
 def connect_between_songs_second_try(song1: Song, song2: Song):
@@ -223,7 +223,8 @@ if __name__ == '__main__':
             # song1 = Song("../songs/Wish You Were Here - Incubus - Lyrics.mp3", sr=32000)
             # song2 = Song("../songs/Incubus - Drive.mp3", sr=32000)
 
-            connect_between_songs_first_try(song1, song2)
         except Exception as e:
             continue
+        connect_between_songs_first_try(song1, song2)
+
 
