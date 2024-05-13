@@ -26,7 +26,9 @@ def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, toke
         range(token_sequence_2.shape[0]*token_sequence_2.shape[1]),
         token_sequence_2.reshape(token_sequence_2.shape[0]*token_sequence_2.shape[1])].reshape(token_sequence_2.shape[0],token_sequence_2.shape[1])
 
-    return sequence_2_logmax[range(0, logits.shape[0], NUMBER_OF_CODEBOOKS)]
+    batch_sequence_2_logmax = sequence_2_logmax[range(0, logits.shape[0], NUMBER_OF_CODEBOOKS)]
+
+    return torch.sum(batch_sequence_2_logmax, dim=-1)
 
 
 def calculate_log_prob_of_sequence_given_another_sequence_method_2(token_sequence_1, token_sequence_2, model):
@@ -82,9 +84,9 @@ def connect_between_songs_first_try(song1: Song, song2: Song):
     log_sum = calculate_log_prob_of_sequence_given_another_sequence(partial_suffix_tokens_batched,
                                                                     partial_prefix_tokens_batched, model, text_tokens)
 
-    best_prob = np.max(log_sum)
+    best_prob = torch.max(log_sum)
     print(f"Total Log Sum Probability: {best_prob}")
-    best_tuple = tuples[np.argmax(log_sum)]
+    best_tuple = tuples[torch.argmax(log_sum)]
     print(f"Best tuple: {best_tuple}")
 
     concat_audio = np.concatenate(
@@ -119,7 +121,7 @@ def connect_between_songs_first_try(song1: Song, song2: Song):
 
 def connect_between_songs_second_try(song1: Song, song2: Song):
     assert song1.sr == song2.sr
-    from transformers import AutoProcessor, MusicgenModel, AutoTokenizer, MusicgenForConditionalGeneration
+    from transformers import AutoProcessor, AutoTokenizer, MusicgenForConditionalGeneration
 
     processor = AutoProcessor.from_pretrained("facebook/musicgen-small")
     tokenizer = AutoTokenizer.from_pretrained("facebook/musicgen-small")
