@@ -9,6 +9,12 @@ import torch
 FADE_DURATION = 3.0
 NUMBER_OF_CODEBOOKS = 4
 
+HOP_SIZE_SAMPLES = 50  # 1 sec / 0.02
+WINDOW_SIZE_SAMPLES_SUFFIX = 200  # 4 sec/ 0.02
+WINDOW_SIZE_SAMPLES_PREFIX = 100  # 2 sec/ 0.02
+
+FULL_WINDOW_SECONDS = 30
+
 
 def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, token_sequence_2, model, text_tokens):
     tokens = torch.cat([token_sequence_1, token_sequence_2], dim=-1)
@@ -31,11 +37,29 @@ def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, toke
     return torch.sum(batch_sequence_2_logmax, dim=-1)
 
 
-def calculate_log_prob_of_sequence_given_another_sequence_method_2(token_sequence_1, token_sequence_2, model):
-    pass
+def calculate_log_prob_of_sequence_given_another_sequence_method_2(token_sequence_1, token_sequence_2, model, text_tokens):
+    tokens = torch.cat([token_sequence_1, token_sequence_2], dim=-1)
 
+    log_sum = 0
+    # loop for every token in prefix
+    for i in range(0, WINDOW_SIZE_SAMPLES_PREFIX):
+        curr_tokens = tokens[..., 0: WINDOW_SIZE_SAMPLES_SUFFIX + i]
+        with torch.no_grad():
+            outputs = model(input_ids=text_tokens, decoder_input_ids=curr_tokens)
+            logits = outputs.logits
+        past_tok, current_tok = i, i + 1
+        log_token_prob = 0
+        for token_dim_index in range(1):
+            token_logit = logits[token_dim_index, -1, :]
+            token_log_probs = torch.nn.functional.log_softmax(token_logit, dim=-1)
+            log_token_prob += token_log_probs[tokens[token_dim_index, current_tok]].item()
 
-def connect_between_songs_first_try(song1: Song, song2: Song):
+        log_sum += log_token_prob
+        # print(f"Token, Log Prob: {log_token_prob}")
+
+    return log_sum
+
+def connect_between_songs(song1: Song, song2: Song):
     assert song1.sr == song2.sr
     from transformers import AutoTokenizer, MusicgenForConditionalGeneration
 
@@ -46,27 +70,24 @@ def connect_between_songs_first_try(song1: Song, song2: Song):
     text_tokens = [tokenizer.pad_token_id]
     text_tokens = torch.tensor(text_tokens).reshape((1, len(text_tokens)))
 
-    prefix = song2.get_partial_audio(end_sec=30)
-    suffix = song1.get_partial_audio(start_sec=-30)
+    suffix = song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS)
+    prefix = song2.get_partial_audio(end_sec=FULL_WINDOW_SECONDS)
 
     prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))))
     suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))))
 
-    hop_size_samples = 50  # 1 sec / 0.02
-    window_size_samples_suffix = 200  # 4 sec/ 0.02
-    window_size_samples_prefix = 100  # 2 sec/ 0.02
 
     tuples = []
     partial_suffix_tokens_batched = torch.tensor([], dtype=torch.int)
     partial_prefix_tokens_batched = torch.tensor([], dtype=torch.int)
 
-    for i1 in range(0, suffix_tokens.audio_codes.shape[-1] - window_size_samples_suffix, hop_size_samples):
-        for i2 in range(0, prefix_tokens.audio_codes.shape[-1] - window_size_samples_prefix, hop_size_samples):
-            print(f'{i1, i2} / {suffix_tokens.audio_codes.shape[-1] - window_size_samples_suffix, prefix_tokens.audio_codes.shape[-1] - window_size_samples_prefix}')
+    for i1 in range(0, suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, HOP_SIZE_SAMPLES):
+        for i2 in range(0, prefix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_PREFIX, HOP_SIZE_SAMPLES):
+            print(f'{i1, i2} / {suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, prefix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_PREFIX}')
 
             transition_energy, _ = song1.get_audio_energy_array(
-                song1.get_partial_audio(start_sec=-30 + (i1 + window_size_samples_suffix)*0.02 - 1,
-                                        end_sec=-30 + (i1 + window_size_samples_suffix)*0.02))
+                song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS + (i1 + WINDOW_SIZE_SAMPLES_SUFFIX)*0.02 - 1,
+                                        end_sec=-FULL_WINDOW_SECONDS + (i1 + WINDOW_SIZE_SAMPLES_SUFFIX)*0.02))
             if np.mean(transition_energy) < 0:
                 continue
 
@@ -75,8 +96,8 @@ def connect_between_songs_first_try(song1: Song, song2: Song):
             if np.mean(transition_energy) < 0:
                 continue
             tuples.append((i1, i2))
-            partial_suffix_tokens = suffix_tokens.audio_codes[..., i1:i1+window_size_samples_suffix][0, 0]
-            partial_prefix_tokens = prefix_tokens.audio_codes[..., i2:i2+window_size_samples_prefix][0, 0]
+            partial_suffix_tokens = suffix_tokens.audio_codes[..., i1:i1+WINDOW_SIZE_SAMPLES_SUFFIX][0, 0]
+            partial_prefix_tokens = prefix_tokens.audio_codes[..., i2:i2+WINDOW_SIZE_SAMPLES_PREFIX][0, 0]
 
             partial_suffix_tokens_batched = torch.cat([partial_suffix_tokens_batched, partial_suffix_tokens], dim=0)
             partial_prefix_tokens_batched = torch.cat([partial_prefix_tokens_batched, partial_prefix_tokens], dim=0)
@@ -90,93 +111,35 @@ def connect_between_songs_first_try(song1: Song, song2: Song):
     print(f"Best tuple: {best_tuple}")
 
     concat_audio = np.concatenate(
-        [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02),
+        [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02),
          song2.get_partial_audio(start_sec=best_tuple[1] * 0.02)])
     sf.write(f'{song1.song_name} + {song2.song_name}_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
     sf.write(f'{song1.song_name} + {song2.song_name}_no_fader.wav', concat_audio, song1.sr)
 
     concat_audio = np.concatenate(
-        [song1.get_partial_audio(start_sec=len(song1.audio) / song1.sr - 30 + best_tuple[0] * 0.02,
-                                 end_sec=len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02),
+        [song1.get_partial_audio(start_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + best_tuple[0] * 0.02,
+                                 end_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02),
          song2.get_partial_audio(start_sec=best_tuple[1] * 0.02,
-                                 end_sec=best_tuple[1] * 0.02 + window_size_samples_prefix * 0.02)])
+                                 end_sec=best_tuple[1] * 0.02 + WINDOW_SIZE_SAMPLES_PREFIX * 0.02)])
     sf.write(f'{song1.song_name} + {song2.song_name}_partial_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
 
     print(f'Best indices: {best_tuple}')
 
     concat_audio = fadeout_cur_fadein_next(
-        song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02, len(song1.audio))),
+        song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02, len(song1.audio))),
         song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
         duration=FADE_DURATION)
 
     sf.write(f'{song1.song_name} + {song2.song_name}_long_fader.wav', concat_audio, song1.sr)
 
     concat_audio = fadeout_cur_fadein_next(
-        song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - 30 + (best_tuple[0] + window_size_samples_suffix) * 0.02, len(song1.audio))),
+        song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02, len(song1.audio))),
         song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
         duration=1)
 
     sf.write(f'{song1.song_name} + {song2.song_name}_short_fader.wav', concat_audio, song1.sr)
 
-
-def connect_between_songs_second_try(song1: Song, song2: Song):
-    assert song1.sr == song2.sr
-    from transformers import AutoProcessor, AutoTokenizer, MusicgenForConditionalGeneration
-
-    processor = AutoProcessor.from_pretrained("facebook/musicgen-small")
-    tokenizer = AutoTokenizer.from_pretrained("facebook/musicgen-small")
-    model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
-
-    audio_encoder = model.audio_encoder
-
-    prefix = song2.get_partial_audio(end_sec=30)
-    suffix = song1.get_partial_audio(start_sec=-30)
-
-    prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))))
-    suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))))
-    text_tokens = tokenizer.encode("continue the song")
-    text_tokens = torch.tensor(text_tokens).reshape((1, len(text_tokens)))
-    hop_size_samples = 25  # 0.5 sec / 0.02
-    window_size_samples = 100  # 2 sec/ 0.02
-
-    best_prob = -np.inf
-    best_tuple = None
-    for i1 in range(0, suffix_tokens.audio_codes.shape[-1] - window_size_samples, hop_size_samples):
-        for i2 in range(0, prefix_tokens.audio_codes.shape[-1] - window_size_samples, hop_size_samples):
-            print(f'{i1, i2} / {suffix_tokens.audio_codes.shape[-1] - window_size_samples, prefix_tokens.audio_codes.shape[-1] - window_size_samples}')
-            partial_prefix_tokens = prefix_tokens.audio_codes[..., i1:i1+window_size_samples][0, 0]
-            partial_suffix_tokens = suffix_tokens.audio_codes[..., i2:i2 + window_size_samples][0, 0]
-            tokens = torch.cat([partial_suffix_tokens, partial_prefix_tokens], dim=-1)
-
-            log_sum = 0
-            # loop for every token in prefix
-            for i in range(0, window_size_samples):
-                curr_tokens = tokens[..., 0: window_size_samples + i]
-                with torch.no_grad():
-                    outputs = model(input_ids=text_tokens, decoder_input_ids=curr_tokens)
-                    logits = outputs.logits
-                past_tok, current_tok = i, i + 1
-                log_token_prob = 0
-                for token_dim_index in range(1):
-                    token_logit = logits[token_dim_index, -1, :]
-                    token_log_probs = torch.nn.functional.log_softmax(token_logit, dim=-1)
-                    log_token_prob += token_log_probs[tokens[token_dim_index, current_tok]].item()
-
-                log_sum += log_token_prob
-                # print(f"Token, Log Prob: {log_token_prob}")
-
-            print(f"Total Log Sum Probability: {log_sum}")
-
-            if log_sum > best_prob:
-                best_prob = log_sum
-                best_tuple = (i1, i2)
-
-        print(f'Best indices: {best_tuple}')
-    concat_audio = np.concatenate(
-        [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - 30 + best_tuple[0]*0.02),
-         song2.get_partial_audio(start_sec=best_tuple[1]*0.02)])
-
-    sf.write(f'{song1.song_name} + {song2.song_name}.wav', concat_audio, song1.sr)
+    return best_prob, best_tuple
 
 
 def fadeout_cur_fadein_next(audio1, audio2, sr, duration=FADE_DURATION):
@@ -209,7 +172,29 @@ def apply_fadein(audio, sr, duration=FADE_DURATION):
     audio[:length] = audio[:length] * fade_curve
 
 
+def create_full_playlist(songs_dir):
+    number_of_songs = len(os.listdir(songs_dir))
+    file_names_list = os.listdir(songs_dir)
+    adjacency_matrix = np.ones((number_of_songs, number_of_songs)) * -np.inf
+    cut_indices_suffix = np.zeros((number_of_songs, number_of_songs))
+    cut_indices_prefix = np.zeros((number_of_songs, number_of_songs))
+    for i in range(number_of_songs):
+        song1 = Song(os.path.join(songs_dir, file_names_list[i]))
+        for j in range(number_of_songs):
+            if i == j:
+                continue
+            song2 = Song(os.path.join(songs_dir, file_names_list[j]))
+            best_prob, best_tuple = connect_between_songs(song1, song2)
+            adjacency_matrix[i, j] = best_prob
+            cut_indices_suffix[i, j] = best_tuple[0]
+            cut_indices_prefix[i, j] = best_tuple[1]
+
+
 if __name__ == '__main__':
+    song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
+    song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
+    connect_between_songs(song1, song2)
+
     songs_pairs = np.array([[(song_name_1, song_name_2) for song_name_1 in os.listdir("../eyal")] for song_name_2 in os.listdir("../eyal")])
     songs_pairs = songs_pairs.reshape((songs_pairs.shape[0] * songs_pairs.shape[1], 2))
     np.random.shuffle(songs_pairs)
@@ -227,6 +212,6 @@ if __name__ == '__main__':
 
         except Exception as e:
             continue
-        connect_between_songs_first_try(song1, song2)
+        connect_between_songs(song1, song2)
 
 
