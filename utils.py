@@ -105,26 +105,23 @@ class Graph:
         pre_order_traversal(mst, 0)
         return organized_vertex
 
+
 def fadeout_cur_fadein_next(audio1, audio2, sr, duration=FADE_DURATION):
     apply_fadeout(audio1, sr, duration)
     apply_fadein(audio2, sr, duration)
     length = int(duration*sr)
     new_audio = audio1
-    end = new_audio.shape[0]
-    start = end - length
-    new_audio[start:end] += audio2[:length]
+    new_audio[-length:] += audio2[:length]
     new_audio = np.concatenate((new_audio, audio2[length:]))
     return new_audio
 
 
 def apply_fadeout(audio, sr, duration=FADE_DURATION):
     length = int(duration*sr)
-    end = audio.shape[0]
-    start = end - length
     # linear fade
     fade_curve = np.linspace(1.0, 0.0, length)
     # apply the curve
-    audio[start:end] = audio[start:end] * fade_curve
+    audio[-length:] = audio[-length:] * fade_curve
 
 
 def apply_fadein(audio, sr, duration=FADE_DURATION):
