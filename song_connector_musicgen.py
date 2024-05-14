@@ -191,6 +191,7 @@ def create_full_playlist(songs_dir):
     print(songs_name_order)
 
     full_playlist_audio = []
+    full_playlist_audio_fader = []
     # create the playlist
     for i in range(number_of_songs):
         start_sec = 0 if i == 0 else cut_indices_prefix[organized_songs_indices[i-1], organized_songs_indices[i]]*0.02
@@ -199,8 +200,14 @@ def create_full_playlist(songs_dir):
                                                        WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02
         curr_song_partial_audio = songs_list[organized_songs_indices[i]].get_partial_audio(start_sec=start_sec, end_sec=end_sec)
         full_playlist_audio = np.concatenate([full_playlist_audio, curr_song_partial_audio])
+        if i != 0:
+            full_playlist_audio_fader = fadeout_cur_fadein_next(full_playlist_audio_fader, curr_song_partial_audio,
+                                                                32000, duration=FADE_DURATION)
+        else:
+            full_playlist_audio_fader = curr_song_partial_audio
 
     save_audio_file(f'playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
+    save_audio_file(f'playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
 
 
 if __name__ == '__main__':

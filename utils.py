@@ -118,12 +118,12 @@ class Graph:
 
 
 def fadeout_cur_fadein_next(audio1, audio2, sr, duration=FADE_DURATION):
-    apply_fadeout(audio1, sr, duration)
-    apply_fadein(audio2, sr, duration)
+    new_audio_1 = apply_fadeout(audio1, sr, duration)
+    new_audio_2 = apply_fadein(audio2, sr, duration)
     length = int(duration*sr)
-    new_audio = audio1
-    new_audio[-length:] += audio2[:length]
-    new_audio = np.concatenate((new_audio, audio2[length:]))
+    new_audio = new_audio_1[:]
+    new_audio[-length:] += new_audio_2[:length]
+    new_audio = np.concatenate((new_audio, new_audio_2[length:]))
     return new_audio
 
 
@@ -132,7 +132,9 @@ def apply_fadeout(audio, sr, duration=FADE_DURATION):
     # linear fade
     fade_curve = np.linspace(1.0, 0.0, length)
     # apply the curve
-    audio[-length:] = audio[-length:] * fade_curve
+    new_audio = audio[:]
+    new_audio[-length:] = new_audio[-length:] * fade_curve
+    return new_audio
 
 
 def apply_fadein(audio, sr, duration=FADE_DURATION):
@@ -140,7 +142,9 @@ def apply_fadein(audio, sr, duration=FADE_DURATION):
     # linear fade
     fade_curve = np.linspace(0.0, 1.0, length)
     # apply the curve
-    audio[:length] = audio[:length] * fade_curve
+    new_audio = audio[:]
+    new_audio[:length] = new_audio[:length] * fade_curve
+    return new_audio
 
 
 def get_partial_audio(audio, sr, start_sec=None, end_sec=None):
