@@ -26,9 +26,10 @@ def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, toke
     print(f"coda available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
         print("should use gpu")
-        model.to('cuda')
-        tokens = tokens.to('cuda')  # Move tokens to GPU
-        text_tokens = text_tokens.to('cuda')  # Move text_tokens to GPU
+        device = 'cuda:3'
+        model.to(device)
+        tokens = tokens.to(device)  # Move tokens to GPU
+        text_tokens = text_tokens.to(device)  # Move text_tokens to GPU
 
     with torch.no_grad():
         outputs = model(input_ids=text_tokens, decoder_input_ids=tokens)
