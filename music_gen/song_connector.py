@@ -20,7 +20,14 @@ def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, toke
     tokens = torch.cat([token_sequence_1, token_sequence_2], dim=-1)
 
     text_tokens = torch.tile(text_tokens, (tokens.shape[0]//NUMBER_OF_CODEBOOKS, 1))
+
+    print("should use gpu")
+    print(torch.cuda.is_available())
+    model.to('cuda')
+
     with torch.no_grad():
+        tokens = tokens.to('cuda')  # Move tokens to GPU
+        text_tokens = text_tokens.to('cuda')  # Move text_tokens to GPU
         outputs = model(input_ids=text_tokens, decoder_input_ids=tokens)
         logits = outputs.logits
 
@@ -77,12 +84,14 @@ def connect_between_songs(song1: Song, song2: Song):
     prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))))
     suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))))
 
-
-    tuples = []
-    partial_suffix_tokens_batched = torch.tensor([], dtype=torch.int)
-    partial_prefix_tokens_batched = torch.tensor([], dtype=torch.int)
+    best_prob = -np.inf
+    best_tuple = None
 
     for i1 in range(0, suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, HOP_SIZE_SAMPLES):
+        partial_suffix_tokens_batched = torch.tensor([], dtype=torch.int)
+        partial_prefix_tokens_batched = torch.tensor([], dtype=torch.int)
+        tuples = []
+
         for i2 in range(0, prefix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_PREFIX, HOP_SIZE_SAMPLES):
             print(f'{i1, i2} / {suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, prefix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_PREFIX}')
 
@@ -103,12 +112,21 @@ def connect_between_songs(song1: Song, song2: Song):
             partial_suffix_tokens_batched = torch.cat([partial_suffix_tokens_batched, partial_suffix_tokens], dim=0)
             partial_prefix_tokens_batched = torch.cat([partial_prefix_tokens_batched, partial_prefix_tokens], dim=0)
 
-    log_sum = calculate_log_prob_of_sequence_given_another_sequence(partial_suffix_tokens_batched,
-                                                                    partial_prefix_tokens_batched, model, text_tokens)
+        ######################
+        # check if batched tokens are empty tensors:
+        if partial_suffix_tokens_batched.nelement() == 0 or partial_prefix_tokens_batched.nelement() == 0:
+            continue
+        ######################
 
-    best_prob = torch.max(log_sum)
+        log_sum = calculate_log_prob_of_sequence_given_another_sequence(partial_suffix_tokens_batched,
+                                                                        partial_prefix_tokens_batched, model, text_tokens)
+        cur_best_prob = torch.max(log_sum)
+        cur_best_tuple = tuples[torch.argmax(log_sum)]
+        if cur_best_prob > best_prob:
+            best_prob = cur_best_prob
+            best_tuple = cur_best_tuple
+
     print(f"Total Log Sum Probability: {best_prob}")
-    best_tuple = tuples[torch.argmax(log_sum)]
     print(f"Best tuple: {best_tuple}")
 
     concat_audio = np.concatenate(
