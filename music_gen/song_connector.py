@@ -1,10 +1,10 @@
 import os
 
 import numpy as np
-from transformers import JukeboxModel, JukeboxConfig, JukeboxPriorConfig, JukeboxPrior, JukeboxVQVAE
 from dtw_baseline.song_handler import Song
-import soundfile as sf
 import torch
+import sys
+from utils import Graph, fadeout_cur_fadein_next, save_audio_file
 
 FADE_DURATION = 3.0
 NUMBER_OF_CODEBOOKS = 4
@@ -58,6 +58,7 @@ def calculate_log_prob_of_sequence_given_another_sequence_method_2(token_sequenc
         # print(f"Token, Log Prob: {log_token_prob}")
 
     return log_sum
+
 
 def connect_between_songs(song1: Song, song2: Song):
     assert song1.sr == song2.sr
@@ -113,15 +114,15 @@ def connect_between_songs(song1: Song, song2: Song):
     concat_audio = np.concatenate(
         [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02),
          song2.get_partial_audio(start_sec=best_tuple[1] * 0.02)])
-    sf.write(f'{song1.song_name} + {song2.song_name}_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
-    sf.write(f'{song1.song_name} + {song2.song_name}_no_fader.wav', concat_audio, song1.sr)
+    save_audio_file(f'{song1.song_name} + {song2.song_name}_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
+    save_audio_file(f'{song1.song_name} + {song2.song_name}_no_fader.wav', concat_audio, song1.sr)
 
     concat_audio = np.concatenate(
         [song1.get_partial_audio(start_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + best_tuple[0] * 0.02,
                                  end_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02),
          song2.get_partial_audio(start_sec=best_tuple[1] * 0.02,
                                  end_sec=best_tuple[1] * 0.02 + WINDOW_SIZE_SAMPLES_PREFIX * 0.02)])
-    sf.write(f'{song1.song_name} + {song2.song_name}_partial_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
+    save_audio_file(f'{song1.song_name} + {song2.song_name}_partial_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
 
     print(f'Best indices: {best_tuple}')
 
@@ -130,88 +131,83 @@ def connect_between_songs(song1: Song, song2: Song):
         song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
         duration=FADE_DURATION)
 
-    sf.write(f'{song1.song_name} + {song2.song_name}_long_fader.wav', concat_audio, song1.sr)
+    save_audio_file(f'{song1.song_name} + {song2.song_name}_long_fader.wav', concat_audio, song1.sr)
 
     concat_audio = fadeout_cur_fadein_next(
         song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02, len(song1.audio))),
         song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
         duration=1)
 
-    sf.write(f'{song1.song_name} + {song2.song_name}_short_fader.wav', concat_audio, song1.sr)
+    save_audio_file(f'{song1.song_name} + {song2.song_name}_short_fader.wav', concat_audio, song1.sr)
 
     return best_prob, best_tuple
-
-
-def fadeout_cur_fadein_next(audio1, audio2, sr, duration=FADE_DURATION):
-    apply_fadeout(audio1, sr, duration)
-    apply_fadein(audio2, sr, duration)
-    length = int(duration*sr)
-    new_audio = audio1
-    end = new_audio.shape[0]
-    start = end - length
-    new_audio[start:end] += audio2[:length]
-    new_audio = np.concatenate((new_audio, audio2[length:]))
-    return new_audio
-
-
-def apply_fadeout(audio, sr, duration=FADE_DURATION):
-    length = int(duration*sr)
-    end = audio.shape[0]
-    start = end - length
-    # linear fade
-    fade_curve = np.linspace(1.0, 0.0, length)
-    # apply the curve
-    audio[start:end] = audio[start:end] * fade_curve
-
-
-def apply_fadein(audio, sr, duration=FADE_DURATION):
-    length = int(duration*sr)
-    # linear fade
-    fade_curve = np.linspace(0.0, 1.0, length)
-    # apply the curve
-    audio[:length] = audio[:length] * fade_curve
 
 
 def create_full_playlist(songs_dir):
     number_of_songs = len(os.listdir(songs_dir))
     file_names_list = os.listdir(songs_dir)
-    adjacency_matrix = np.ones((number_of_songs, number_of_songs)) * -np.inf
+    songs_list = [Song(os.path.join(songs_dir, file_names_list[i]), sr=32000) for i in range(number_of_songs)]
+    adjacency_matrix = np.ones((number_of_songs, number_of_songs)) * np.inf
     cut_indices_suffix = np.zeros((number_of_songs, number_of_songs))
     cut_indices_prefix = np.zeros((number_of_songs, number_of_songs))
     for i in range(number_of_songs):
-        song1 = Song(os.path.join(songs_dir, file_names_list[i]))
+        song1 = songs_list[i]
         for j in range(number_of_songs):
             if i == j:
                 continue
-            song2 = Song(os.path.join(songs_dir, file_names_list[j]))
+            song2 = songs_list[j]
             best_prob, best_tuple = connect_between_songs(song1, song2)
             adjacency_matrix[i, j] = best_prob
             cut_indices_suffix[i, j] = best_tuple[0]
             cut_indices_prefix[i, j] = best_tuple[1]
 
+    # the log probabilities are negative, and we what to choose the highest probabilities, so in order to use the tsp
+    # approximation algorithm, we converted it to positive value
+    adjacency_matrix = adjacency_matrix * -1
+
+    g = Graph(number_of_songs)
+    g.graph = adjacency_matrix
+
+    organized_songs = g.find_approximate_optimal_tsp_path()
+    songs_order = [songs_list[i].song_name for i in organized_songs]
+
+    full_playlist_audio = []
+    # create the playlist
+    for i in range(number_of_songs):
+        start_sec = 0 if i == 0 else cut_indices_prefix[songs_order[i-1], songs_order[i]]*0.02
+        end_sec = None if i == number_of_songs-1 else - FULL_WINDOW_SECONDS + \
+                                                      (cut_indices_suffix[songs_order[i], songs_order[i+1]] +
+                                                       WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02
+        curr_song_partial_audio = songs_list[songs_order[i]].get_partial_audio(start_sec=start_sec, end_sec=end_sec)
+        full_playlist_audio += curr_song_partial_audio
+
+    save_audio_file(f'playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
+
 
 if __name__ == '__main__':
-    song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
-    song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
-    connect_between_songs(song1, song2)
 
-    songs_pairs = np.array([[(song_name_1, song_name_2) for song_name_1 in os.listdir("../eyal")] for song_name_2 in os.listdir("../eyal")])
-    songs_pairs = songs_pairs.reshape((songs_pairs.shape[0] * songs_pairs.shape[1], 2))
-    np.random.shuffle(songs_pairs)
-
-    for song_name_1, song_name_2 in songs_pairs:
-        print(song_name_1, song_name_2)
-        if song_name_1 == song_name_2:
-            continue
-        try:
-            song1 = Song(f"../eyal/{song_name_1}", sr=32000)
-            song2 = Song(f"../eyal/{song_name_2}", sr=32000)
-
-            # song1 = Song("../songs/Wish You Were Here - Incubus - Lyrics.mp3", sr=32000)
-            # song2 = Song("../songs/Incubus - Drive.mp3", sr=32000)
-
-        except Exception as e:
-            continue
-        connect_between_songs(song1, song2)
+    create_full_playlist('../eyal - part')
+    # song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
+    # song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
+    # connect_between_songs(song1, song2)
+    #
+    # songs_pairs = np.array([[(song_name_1, song_name_2) for song_name_1 in os.listdir("../eyal")] for song_name_2 in os.listdir("../eyal")])
+    # songs_pairs = songs_pairs.reshape((songs_pairs.shape[0] * songs_pairs.shape[1], 2))
+    # np.random.shuffle(songs_pairs)
+    #
+    # for song_name_1, song_name_2 in songs_pairs:
+    #     print(song_name_1, song_name_2)
+    #     if song_name_1 == song_name_2:
+    #         continue
+    #     try:
+    #         song1 = Song(f"../eyal/{song_name_1}", sr=32000)
+    #         song2 = Song(f"../eyal/{song_name_2}", sr=32000)
+    #
+    #         # song1 = Song("../songs/Wish You Were Here - Incubus - Lyrics.mp3", sr=32000)
+    #         # song2 = Song("../songs/Incubus - Drive.mp3", sr=32000)
+    #
+    #     except Exception as e:
+    #         continue
+    #     connect_between_songs(song1, song2)
 
 
