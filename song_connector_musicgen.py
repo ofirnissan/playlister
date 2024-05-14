@@ -5,14 +5,16 @@ from song_handler import Song
 import torch
 from utils import Graph, fadeout_cur_fadein_next, save_audio_file
 
+os.environ['HF_HOME'] = '/home/yandex/APDL2324a/group_7/'
+
 FADE_DURATION = 3.0
 NUMBER_OF_CODEBOOKS = 4
 
-HOP_SIZE_SAMPLES = 50  # 1 sec / 0.02
+HOP_SIZE_SAMPLES = 25  # 1 sec / 0.02
 WINDOW_SIZE_SAMPLES_SUFFIX = 200  # 4 sec/ 0.02
-WINDOW_SIZE_SAMPLES_PREFIX = 100  # 2 sec/ 0.02
+WINDOW_SIZE_SAMPLES_PREFIX = 200  # 4 sec/ 0.02
 
-FULL_WINDOW_SECONDS = 30
+FULL_WINDOW_SECONDS = 60
 
 
 def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, token_sequence_2, model, text_tokens):
@@ -97,12 +99,12 @@ def connect_between_songs(song1: Song, song2: Song):
             transition_energy, _ = song1.get_audio_energy_array(
                 song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS + (i1 + WINDOW_SIZE_SAMPLES_SUFFIX)*0.02 - 1,
                                         end_sec=-FULL_WINDOW_SECONDS + (i1 + WINDOW_SIZE_SAMPLES_SUFFIX)*0.02))
-            if np.mean(transition_energy) < 0:
+            if np.mean(transition_energy) < 10:
                 continue
 
             transition_energy, _ = song2.get_audio_energy_array(
                 song2.get_partial_audio(start_sec=i2 * 0.02, end_sec=i2 * 0.02 + 1))
-            if np.mean(transition_energy) < 0:
+            if np.mean(transition_energy) < 10:
                 continue
             tuples.append((i1, i2))
             partial_suffix_tokens = suffix_tokens.audio_codes[..., i1:i1+WINDOW_SIZE_SAMPLES_SUFFIX][0, 0]
@@ -200,19 +202,19 @@ def create_full_playlist(songs_dir):
                                                        WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02
         curr_song_partial_audio = songs_list[organized_songs_indices[i]].get_partial_audio(start_sec=start_sec, end_sec=end_sec)
         full_playlist_audio = np.concatenate([full_playlist_audio, curr_song_partial_audio])
-        # if i != 0:
-        #     full_playlist_audio_fader = fadeout_cur_fadein_next(full_playlist_audio_fader, curr_song_partial_audio,
-        #                                                         32000, duration=FADE_DURATION)
-        # else:
-        #     full_playlist_audio_fader = curr_song_partial_audio
+        if i != 0:
+            full_playlist_audio_fader = fadeout_cur_fadein_next(full_playlist_audio_fader, curr_song_partial_audio,
+                                                                32000, duration=FADE_DURATION)
+        else:
+            full_playlist_audio_fader = curr_song_partial_audio
 
     save_audio_file(f'playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
-    # save_audio_file(f'playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
+    save_audio_file(f'playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
 
 
 if __name__ == '__main__':
 
-    create_full_playlist('eyal - part')
+    create_full_playlist('/home/yandex/APDL2324a/group_7/haviv_playlist/')
     # song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
     # song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
     # connect_between_songs(song1, song2)
