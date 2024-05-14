@@ -132,18 +132,18 @@ def connect_between_songs(song1: Song, song2: Song):
     print(f"Total Log Sum Probability: {best_prob}")
     print(f"Best tuple: {best_tuple}")
 
-    concat_audio = np.concatenate(
-        [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02),
-         song2.get_partial_audio(start_sec=best_tuple[1] * 0.02)])
-    save_audio_file(f'{song1.song_name} + {song2.song_name}_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
-    save_audio_file(f'{song1.song_name} + {song2.song_name}_no_fader.wav', concat_audio, song1.sr)
-
-    concat_audio = np.concatenate(
-        [song1.get_partial_audio(start_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + best_tuple[0] * 0.02,
-                                 end_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02),
-         song2.get_partial_audio(start_sec=best_tuple[1] * 0.02,
-                                 end_sec=best_tuple[1] * 0.02 + WINDOW_SIZE_SAMPLES_PREFIX * 0.02)])
-    save_audio_file(f'{song1.song_name} + {song2.song_name}_partial_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
+    # concat_audio = np.concatenate(
+    #     [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02),
+    #      song2.get_partial_audio(start_sec=best_tuple[1] * 0.02)])
+    # save_audio_file(f'{song1.song_name} + {song2.song_name}_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
+    # save_audio_file(f'{song1.song_name} + {song2.song_name}_no_fader.wav', concat_audio, song1.sr)
+    #
+    # concat_audio = np.concatenate(
+    #     [song1.get_partial_audio(start_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + best_tuple[0] * 0.02,
+    #                              end_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02),
+    #      song2.get_partial_audio(start_sec=best_tuple[1] * 0.02,
+    #                              end_sec=best_tuple[1] * 0.02 + WINDOW_SIZE_SAMPLES_PREFIX * 0.02)])
+    # save_audio_file(f'{song1.song_name} + {song2.song_name}_partial_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
 
     print(f'Best indices: {best_tuple}')
 
