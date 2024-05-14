@@ -1,9 +1,8 @@
 import os
 
 import numpy as np
-from dtw_baseline.song_handler import Song
+from song_handler import Song
 import torch
-import sys
 from utils import Graph, fadeout_cur_fadein_next, save_audio_file
 
 FADE_DURATION = 3.0
@@ -206,7 +205,7 @@ def create_full_playlist(songs_dir):
 
 if __name__ == '__main__':
 
-    create_full_playlist('../eyal - part')
+    create_full_playlist('eyal - part')
     # song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
     # song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
     # connect_between_songs(song1, song2)

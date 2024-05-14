@@ -2,8 +2,6 @@ import os
 import librosa
 import numpy as np
 import soundfile as sf
-import sys
-sys.path.append("playlister/audio_hw2_code_only")
 from plotter import Plotter
 
 
@@ -37,7 +35,6 @@ class Song:
         self.audio_length = len(self.audio) / sr
         self.tempo = None
 
-
     def _load_audio(self, filepath, sr=48000):
         audio, sr = librosa.load(filepath, sr=sr)
         self.audio = audio
@@ -70,7 +67,6 @@ class Song:
     def get_partial_chroma_stft(self, start_sec=None, end_sec=None):
         audio = self.get_partial_audio(start_sec, end_sec)
         return self.get_chroma_stft(audio)
-    
 
     def get_partial_several_intervals(self, intervals, product='chroma_stft', func='concat'):
         if product == 'chroma_stft' and func == 'concat':
@@ -80,9 +76,7 @@ class Song:
             for interval in intervals[1:]:
                 chroma_stft = np.concatenate((chroma_stft, self.get_partial_chroma_stft(interval[0], interval[1])), axis=1)
             return chroma_stft
-        
-        
-    
+
     def find_vocals_and_accompaniment_for_suffix_and_prefix(self, dir_path=None):
         # if dir path is not None search for the vocals and accompaniment in the given directory of both suffix and prefix
         if dir_path is not None:
@@ -103,7 +97,6 @@ class Song:
         assert self.seperator is not None, "Please provide a seperator object"
         self.find_vocals_and_accompaniment(suffix=True)
         self.find_vocals_and_accompaniment(suffix=False)
-
 
     def find_vocals_and_accompaniment(self, suffix=True):
         
@@ -127,7 +120,7 @@ class Song:
         home_dir_path = "/mnt/c/Users/ofirn/Documents/oni/elec/playlister"
         dir_path = os.path.join(home_dir_path, output_split_dir)
         dir_path = os.path.join(dir_path, dir_name)
-        vocals_path = os.path.join(dir_path, 'vocals.wav')
+        vocals_path = os.path.join(dir_path, 'dtw_baseline/vocals.wav')
         print("VOCALS_PATH")
         print(vocals_path)
         accompaniment_path = os.path.join(dir_path, 'accompaniment.wav')
@@ -142,14 +135,12 @@ class Song:
             self.prefix_vocals = vocals
             self.prefix_accompaniment = accompaniment
 
-
     def get_prefix_and_suffix_energy_array_post_separation(self):
         assert self.suffix_vocals is not None and \
         self.prefix_vocals is not None, \
         "Please call find_vocals_and_accompaniment_for_suffix_and_prefix() before calling this function"
         self.suffix_vocals_energy, self.t_suffix = self.get_audio_energy_array(self.suffix_vocals.audio)
         self.prefix_vocals_energy, self.t_prefix = self.get_audio_energy_array(self.prefix_vocals.audio)
-        
 
     def get_audio_energy_array(self, audio):
         window_length_samples = int(self.win_length_sec * self.sr)
@@ -161,5 +152,3 @@ class Song:
         energy = 10 * np.log10(energy)
         t = librosa.frames_to_time(range(len(energy)), sr=self.sr, hop_length=hop_length_samples)
         return energy, t
-
-

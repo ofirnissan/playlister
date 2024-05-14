@@ -17,8 +17,16 @@ def save_audio_file(file_path, audio, sr):
     if num_retries == 0:
         print(f"Failed")
 
+# =================================================================================
+# A Python3 program for
+# Prim's Minimum Spanning Tree (MST) algorithm.
+# The program is for adjacency matrix
+# representation of the graph
+
+# Library for INT_MAX
 
 class Graph:
+    # Written by Divyanshu Mehta (https://www.geeksforgeeks.org/prims-minimum-spanning-tree-mst-greedy-algo-5/)
     def __init__(self, vertices):
         self.V = vertices
         self.graph = [[0 for column in range(vertices)]
@@ -91,10 +99,13 @@ class Graph:
 
         return self.printAndGetMST(parent)
 
+# =================================================================================
+
     def find_approximate_optimal_tsp_path(self):
         mst = self.primMST()
         # create the organized playlist using pre-order traversal of the mst
         organized_vertex = []
+
         def pre_order_traversal(mst, node):
             organized_vertex.append(node)
             if node in mst:
@@ -130,3 +141,22 @@ def apply_fadein(audio, sr, duration=FADE_DURATION):
     fade_curve = np.linspace(0.0, 1.0, length)
     # apply the curve
     audio[:length] = audio[:length] * fade_curve
+
+
+def get_partial_audio(audio, sr, start_sec=None, end_sec=None):
+    start_index = int(sr * start_sec) if start_sec is not None else 0
+    end_index = int(sr * end_sec) if end_sec is not None else len(audio)
+    return audio[start_index: end_index]
+
+
+def show_dtw_cost_matrix_and_wp(dtw_cost_matrix, wp):
+    import matplotlib.pyplot as plt
+    import librosa
+    fig, ax = plt.subplots()
+    img = librosa.display.specshow(dtw_cost_matrix, x_axis='frames', y_axis='frames', ax=ax, hop_length=512)
+    ax.set(title='DTW cost', xlabel='prefix', ylabel='sufix')
+    ax.plot(wp[:, 1], wp[:, 0], label='Optimal path', color='y')
+    ax.legend()
+    fig.colorbar(img, ax=ax)
+    plt.show()
+

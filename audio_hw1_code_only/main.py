@@ -2,9 +2,8 @@ import librosa
 import scipy
 import matplotlib.pyplot as plt
 import numpy as np
-import parselmouth
 import soundfile as sf
-from audio_hw2_code_only.plotter import Plotter
+from plotter import Plotter
 import math
 import copy
 

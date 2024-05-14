@@ -2,117 +2,19 @@ from song_handler import Song
 import soundfile as sf
 import librosa
 import numpy as np
-import sys
 import os
-sys.path.append("audio_hw2_code_only")
-from plotter import Plotter
-from spleeter.separator import Separator
+from utils import Graph, fadeout_cur_fadein_next, get_partial_audio
+from utils import show_dtw_cost_matrix_and_wp  # for debug
 
 
 # songs_list_dir = '/home/yandex/APDL2324a/group_7/haviv_playlist/'
-songs_list_dir = '/mnt/c/Users/ofirn/Music/songs/'
-no_vocal_detection_threshold = 5 # dB ; Threshold for silence detection in the vocals energy array. 
-noise_threshold_for_transformation = 0  # dB ; Threshold for silence detection in transformation.
-min_size_of_time_interval = 2 # sec ; Minimum size of time interval for silence detection.
-jump = 2 # Minimum number of frames between two silent intervals to consider them as different intervals. 
-          # This is used to deal with noise in the energy array of the vocals.
-fade_duration = 2.0 # sec ; Duration of the fade in and fade out effects.
-
-
-# =================================================================================
-# A Python3 program for 
-# Prim's Minimum Spanning Tree (MST) algorithm.
-# The program is for adjacency matrix 
-# representation of the graph
-
-# Library for INT_MAX
-import sys
-
-
-class Graph():
-    def __init__(self, vertices):
-        self.V = vertices
-        self.graph = [[0 for column in range(vertices)]
-                    for row in range(vertices)]
-
-    # A utility function to print 
-    # the constructed MST stored in parent[]
-    def printAndGetMST(self, parent):
-        mst = {}
-        print("Edge \tWeight")
-        for i in range(1, self.V):
-            print(parent[i], "-", i, "\t", self.graph[i][parent[i]])
-            if parent[i] not in mst:
-                mst[parent[i]] = []
-            mst[parent[i]].append(i)
-        return mst
-
-    # A utility function to find the vertex with
-    # minimum distance value, from the set of vertices
-    # not yet included in shortest path tree
-    def minKey(self, key, mstSet):
-
-        # Initialize min value
-        min = sys.maxsize
-
-        for v in range(self.V):
-            if key[v] < min and mstSet[v] == False:
-                min = key[v]
-                min_index = v
-
-        return min_index
-
-    # Function to construct and print MST for a graph
-    # represented using adjacency matrix representation
-    def primMST(self):
-
-        # Key values used to pick minimum weight edge in cut
-        key = [sys.maxsize] * self.V
-        parent = [None] * self.V # Array to store constructed MST
-        # Make key 0 so that this vertex is picked as first vertex
-        key[0] = 0
-        mstSet = [False] * self.V
-
-        parent[0] = -1 # First node is always the root of
-
-        for cout in range(self.V):
-
-            # Pick the minimum distance vertex from
-            # the set of vertices not yet processed.
-            # u is always equal to src in first iteration
-            u = self.minKey(key, mstSet)
-
-            # Put the minimum distance vertex in
-            # the shortest path tree
-            mstSet[u] = True
-
-            # Update dist value of the adjacent vertices
-            # of the picked vertex only if the current
-            # distance is greater than new distance and
-            # the vertex in not in the shortest path tree
-            for v in range(self.V):
-
-                # graph[u][v] is non zero only for adjacent vertices of m
-                # mstSet[v] is false for vertices not yet included in MST
-                # Update the key only if graph[u][v] is smaller than key[v]
-                if self.graph[u][v] > 0 and mstSet[v] == False \
-                and key[v] > self.graph[u][v]:
-                    key[v] = self.graph[u][v]
-                    parent[v] = u
-
-        return self.printAndGetMST(parent)
-        
-
-# =================================================================================
-
-# Contributed by Divyanshu Mehta (https://www.geeksforgeeks.org/prims-minimum-spanning-tree-mst-greedy-algo-5/)
-
-
-
-def get_partial_audio(audio, sr, start_sec=None, end_sec=None):
-    start_index = int(sr * start_sec) if start_sec is not None else 0
-    end_index = int(sr * end_sec) if end_sec is not None else len(audio)
-    return audio[start_index: end_index]
+SONGS_LIST_DIR = '/mnt/c/Users/ofirn/Music/songs/'
+NO_VOCAL_DETECTION_THRESHOLD = 5  # dB ; Threshold for silence detection in the vocals energy array.
+NOISE_THRESHOLD_FOR_TRANSFORMATION = 0  # dB ; Threshold for silence detection in transformation.
+MIN_SIZE_OF_TIME_INTERVAL = 2  # sec ; Minimum size of time interval for silence detection.
+JUMP = 2  # Minimum number of frames between two silent intervals to consider them as different intervals.
+# This is used to deal with noise in the energy array of the vocals.
+FADE_DURATION = 2.0  # sec ; Duration of the fade in and fade out effects.
 
 
 def connect_between_songs_by_dtw_only(song1: Song, song2: Song, file_path: str, song_builder: Song=None, accompaniment=False, pick_idx_method='min_dist_in_path'):
@@ -131,32 +33,34 @@ def connect_between_songs_by_dtw_only(song1: Song, song2: Song, file_path: str, 
     prefix_chroma_stft = song2.get_chroma_stft(prefix_audio)  # np.ndarray
 
     # Use DTW to find the best match between suffix and prefix:
+    sorted_indexes = []
     window_in_sec = int(5 * song1.sr / 512) 
     dtw_cost_matrix, wp = librosa.sequence.dtw(suffix_chroma_stft, prefix_chroma_stft, subseq=True)  # wp is the Warping path
     if pick_idx_method == 'random':
-        sorted_indeces = np.random.choice(len(wp), len(wp))
+        sorted_indexes = np.random.choice(len(wp), len(wp))
     elif pick_idx_method == 'max_propagation':
         propagation = np.cumsum(np.sum(wp[:-1] - wp[1:], axis=1))
-        sorted_indeces = np.argsort(propagation[window_in_sec:] - propagation[:len(propagation) - window_in_sec])[::-1] 
+        sorted_indexes = np.argsort(propagation[window_in_sec:] - propagation[:len(propagation) - window_in_sec])[::-1]
     elif pick_idx_method == 'min_dist_in_path':
         path_cost = dtw_cost_matrix[wp[:, 0], wp[:, 1]]
-        sorted_indeces = np.argsort(path_cost[:len(path_cost) - window_in_sec] - path_cost[window_in_sec:])
+        sorted_indexes = np.argsort(path_cost[:len(path_cost) - window_in_sec] - path_cost[window_in_sec:])
     
     # Among chosen indeces by the above methods, choose index in which suffix is not scilent:
     first_audio = None
-    for idx in sorted_indeces:
-        idx += window_in_sec  # wp start from max to min. So by increasing idx by window, we get the beginning of the match
+    for idx in sorted_indexes:
+        idx += window_in_sec  # wp start from max to min. By increasing idx by window, we get the beginning of the match
         suffix_cut_frame, prefix_cut_frame = wp[idx]
         first_song = song_builder if song_builder is not None else song1
         prefix_cut_audio_index = prefix_cut_frame * 512
         suffix_cut_audio_index = len(first_song.audio) - (len(suffix_audio) - suffix_cut_frame * 512)
         first_audio = first_song.audio[: suffix_cut_audio_index]
         second_audio = song2.audio[prefix_cut_audio_index:]
-        if first_song.get_audio_energy_array(get_partial_audio(first_audio, first_song.sr, start_sec=-2))[0].mean() > noise_threshold_for_transformation:
+        if first_song.get_audio_energy_array(get_partial_audio(first_audio, first_song.sr, start_sec=-2))[0].mean()\
+                > NOISE_THRESHOLD_FOR_TRANSFORMATION:
             break
 
     # Concat songs with overlapping fade and save new song:
-    new_audio = fadeout_cur_fadein_next(first_audio, second_audio, song1.sr, duration=fade_duration)
+    new_audio = fadeout_cur_fadein_next(first_audio, second_audio, song1.sr, duration=FADE_DURATION)
     sf.write(file_path, new_audio, first_song.sr)
     new_song = Song(file_path)
     return new_song
@@ -167,7 +71,7 @@ def find_silent_intervals_of_partial(song: Song, threshold=0, min_time_interval_
     scilent_time_intervals = []
     start = song.t_suffix[indices[0]] if suffix else song.t_prefix[indices[0]]
     for i in range(len(indices) - 1):
-        if indices[i + 1] - indices[i] > jump or i == len(indices) - 2:
+        if indices[i + 1] - indices[i] > JUMP or i == len(indices) - 2:
             cur = song.t_suffix[indices[i]] if suffix else song.t_prefix[indices[i]]
             if cur - start > min_time_interval_length:
                 scilent_time_intervals.append((start, cur))
@@ -178,22 +82,11 @@ def find_silent_intervals_of_partial(song: Song, threshold=0, min_time_interval_
 def find_silent_intervals_of_suffix_and_prefix(song: Song, threshold=0, min_time_interval_length=2):
     suffix_scilent_intervals = find_silent_intervals_of_partial(song, threshold, min_time_interval_length, suffix=True)
     if len(suffix_scilent_intervals) == 0:
-        suffix_scilent_intervals = [(song.partial_audio_time_in_sec-min_size_of_time_interval, song.partial_audio_time_in_sec)]
+        suffix_scilent_intervals = [(song.partial_audio_time_in_sec - MIN_SIZE_OF_TIME_INTERVAL, song.partial_audio_time_in_sec)]
     prefix_scilent_intervals = find_silent_intervals_of_partial(song, threshold, min_time_interval_length, suffix=False)
     if len(prefix_scilent_intervals) == 0:
-        prefix_scilent_intervals = [(0, min_size_of_time_interval)]
+        prefix_scilent_intervals = [(0, MIN_SIZE_OF_TIME_INTERVAL)]
     return prefix_scilent_intervals, suffix_scilent_intervals
-
-
-def show_dtw_cost_matrix_and_wp(dtw_cost_matrix, wp):
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots()
-    img = librosa.display.specshow(dtw_cost_matrix, x_axis='frames', y_axis='frames', ax=ax, hop_length=512)
-    ax.set(title='DTW cost', xlabel='prefix', ylabel='sufix')
-    ax.plot(wp[:, 1], wp[:, 0], label='Optimal path', color='y')
-    ax.legend()
-    fig.colorbar(img, ax=ax)
-    plt.show()
 
 
 def dtw_over_songs_intervals_post_spleeter(song1: Song, song2: Song, song1_suffix_scilent_intervals, song2_prefix_scilent_intervals):
@@ -221,7 +114,7 @@ def dtw_over_songs_intervals_post_spleeter(song1: Song, song2: Song, song1_suffi
                 suffix_cut_frame = wp[idx][0]
                 suffix_cut_audio_index = suffix_cut_frame * 512
                 first_audio = song1.get_partial_audio(end_sec=len(song1.audio)/song1.sr - song1.partial_audio_time_in_sec + song1_suffix_scilent_intervals[min_i][0] + suffix_cut_audio_index/song1.sr)
-                if song1.get_audio_energy_array(get_partial_audio(first_audio, song1.sr, start_sec=-2))[0].mean() > noise_threshold_for_transformation:
+                if song1.get_audio_energy_array(get_partial_audio(first_audio, song1.sr, start_sec=-2))[0].mean() > NOISE_THRESHOLD_FOR_TRANSFORMATION:
                     break
             if distances_in_path[idx] < min_value:
                 min_value = distances_in_path[idx]
@@ -237,9 +130,9 @@ def concat_between_songs_post_spleeter(song1: Song, song2: Song, file_path: str,
     
     # Get scilent time intervals of prefix and suffix of both songs:
     song1_prefix_scilent_intervals, song1_suffix_scilent_intervals = find_silent_intervals_of_suffix_and_prefix(\
-        song1, threshold=no_vocal_detection_threshold, min_time_interval_length=min_size_of_time_interval)
+        song1, threshold=NO_VOCAL_DETECTION_THRESHOLD, min_time_interval_length=MIN_SIZE_OF_TIME_INTERVAL)
     song2_prefix_scilent_intervals, song2_suffix_scilent_intervals = find_silent_intervals_of_suffix_and_prefix(\
-        song2, threshold=no_vocal_detection_threshold, min_time_interval_length=min_size_of_time_interval)
+        song2, threshold=NO_VOCAL_DETECTION_THRESHOLD, min_time_interval_length=MIN_SIZE_OF_TIME_INTERVAL)
     
     print(f"{song1.song_name} suffix_scilent_intervals: ", song1_suffix_scilent_intervals)
     print(f"{song2.song_name} prefix_scilent_intervals: ", song2_prefix_scilent_intervals)
@@ -256,7 +149,7 @@ def concat_between_songs_post_spleeter(song1: Song, song2: Song, file_path: str,
     first_song = song_builder if song_builder is not None else song1
     first = first_song.get_partial_audio(end_sec=len(first_song.audio)/song1.sr - song1.partial_audio_time_in_sec + song1_suffix_scilent_intervals[min_i][0] + suffix_cut_audio_index/song1.sr)
     second = song2.get_partial_audio(prefix_cut_audio_index/song2.sr + song2_prefix_scilent_intervals[min_j][0])
-    new_audio = fadeout_cur_fadein_next(first, second, song1.sr, duration=fade_duration)
+    new_audio = fadeout_cur_fadein_next(first, second, song1.sr, duration=FADE_DURATION)
 
     sf.write(file_path, new_audio, first_song.sr)
     new_song = Song(file_path)
@@ -314,16 +207,8 @@ def organize_song_list_using_dtw_optimum_aproximation(songs):
             dtw_cost_matrix, wp = librosa.sequence.dtw(suffix_chroma_stft, prefix_chroma_stft, subseq=True)
             dtw_cost = dtw_cost_matrix[-1,-1] 
             g.graph[j][i] = dtw_cost
-    mst = g.primMST()
-    # create the organized playlist using pre-order traversal of the mst
-    organized_songs = []
-    def pre_order_traversal(mst, node):
-        organized_songs.append(node)
-        if node in mst:
-            for child in mst[node]:
-                pre_order_traversal(mst, child)
-    pre_order_traversal(mst, 0)
-    return [songs[i] for i in organized_songs]
+    organized_songs_indexes = g.find_approximate_optimal_tsp_path()
+    return [songs[idx] for idx in organized_songs_indexes]
     
 
 def organize_song_list_using_tempo(songs):
@@ -332,45 +217,15 @@ def organize_song_list_using_tempo(songs):
     return songs
 
 
-def fadeout_cur_fadein_next(audio1, audio2, sr, duration=fade_duration):
-    apply_fadeout(audio1, sr, duration)
-    apply_fadein(audio2, sr, duration)
-    length = int(duration*sr)
-    new_audio = audio1
-    end = new_audio.shape[0]
-    start = end - length
-    new_audio[start:end] += audio2[:length]
-    new_audio = np.concatenate((new_audio, audio2[length:]))
-    return new_audio
-
-
-def apply_fadeout(audio, sr, duration=fade_duration):
-    length = int(duration*sr)
-    end = audio.shape[0]
-    start = end - length
-    # linear fade
-    fade_curve = np.linspace(1.0, 0.0, length)
-    # apply the curve
-    audio[start:end] = audio[start:end] * fade_curve
-
-
-def apply_fadein(audio, sr, duration=fade_duration):
-    length = int(duration*sr)
-    # linear fade
-    fade_curve = np.linspace(0.0, 1.0, length)
-    # apply the curve
-    audio[:length] = audio[:length] * fade_curve
-
-
 if __name__ == '__main__':
-    song_names = os.listdir(songs_list_dir)[:3]
+    song_names = os.listdir(SONGS_LIST_DIR)[:3]
     songs = []
     # get all files from dir to song_names list:
     # sep = Separator('spleeter:2stems')
     sep = None
     for song_name in song_names:
         print(f"parsing: {song_name}")
-        song = Song(songs_list_dir + f"{song_name}", seperator=sep, remove_zero_amp=True)
+        song = Song(SONGS_LIST_DIR + f"{song_name}", seperator=sep, remove_zero_amp=True)
         song.partial_audio_time_in_sec = 30
         time_in_sec = song.partial_audio_time_in_sec
         # song.calc_tempo()

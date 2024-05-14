@@ -1,5 +1,4 @@
 import librosa
-import matplotlib.pyplot as plt
 import numpy as np
 import soundfile as sf
 import scipy
