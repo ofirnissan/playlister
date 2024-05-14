@@ -8,7 +8,8 @@ from utils import show_dtw_cost_matrix_and_wp  # for debug
 
 
 # songs_list_dir = '/home/yandex/APDL2324a/group_7/haviv_playlist/'
-SONGS_LIST_DIR = '/mnt/c/Users/ofirn/Music/songs/'
+SONGS_LIST_DIR = '/home/yandex/APDL2324a/group_7/haviv_playlist/'
+#SONGS_LIST_DIR = '/mnt/c/Users/ofirn/Music/songs/'
 NO_VOCAL_DETECTION_THRESHOLD = 5  # dB ; Threshold for silence detection in the vocals energy array.
 NOISE_THRESHOLD_FOR_TRANSFORMATION = 0  # dB ; Threshold for silence detection in transformation.
 MIN_SIZE_OF_TIME_INTERVAL = 2  # sec ; Minimum size of time interval for silence detection.
@@ -226,7 +227,7 @@ if __name__ == '__main__':
     for song_name in song_names:
         print(f"parsing: {song_name}")
         song = Song(SONGS_LIST_DIR + f"{song_name}", seperator=sep, remove_zero_amp=True)
-        song.partial_audio_time_in_sec = 30
+        song.partial_audio_time_in_sec = 60
         time_in_sec = song.partial_audio_time_in_sec
         # song.calc_tempo()
         # song.find_vocals_and_accompaniment_for_suffix_and_prefix(dir_path=f"/mnt/c/Users/ofirn/Documents/oni/elec/playlister/spleeter_output/{song_name}")
