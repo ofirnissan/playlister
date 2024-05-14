@@ -18,16 +18,16 @@ FULL_WINDOW_SECONDS = 30
 
 def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, token_sequence_2, model, text_tokens):
     tokens = torch.cat([token_sequence_1, token_sequence_2], dim=-1)
-
     text_tokens = torch.tile(text_tokens, (tokens.shape[0]//NUMBER_OF_CODEBOOKS, 1))
 
-    print("should use gpu")
-    print(torch.cuda.is_available())
-    model.to('cuda')
-
-    with torch.no_grad():
+    print(f"coda available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print("should use gpu")
+        model.to('cuda')
         tokens = tokens.to('cuda')  # Move tokens to GPU
         text_tokens = text_tokens.to('cuda')  # Move text_tokens to GPU
+
+    with torch.no_grad():
         outputs = model(input_ids=text_tokens, decoder_input_ids=tokens)
         logits = outputs.logits
 
@@ -186,18 +186,20 @@ def create_full_playlist(songs_dir):
     g = Graph(number_of_songs)
     g.graph = adjacency_matrix
 
-    organized_songs = g.find_approximate_optimal_tsp_path()
-    songs_order = [songs_list[i].song_name for i in organized_songs]
+    organized_songs_indices = g.find_approximate_optimal_tsp_path()
+
+    songs_name_order = [songs_list[i].song_name for i in organized_songs_indices]
+    print(songs_name_order)
 
     full_playlist_audio = []
     # create the playlist
     for i in range(number_of_songs):
-        start_sec = 0 if i == 0 else cut_indices_prefix[songs_order[i-1], songs_order[i]]*0.02
+        start_sec = 0 if i == 0 else cut_indices_prefix[organized_songs_indices[i-1], organized_songs_indices[i]]*0.02
         end_sec = None if i == number_of_songs-1 else - FULL_WINDOW_SECONDS + \
-                                                      (cut_indices_suffix[songs_order[i], songs_order[i+1]] +
+                                                      (cut_indices_suffix[organized_songs_indices[i], organized_songs_indices[i+1]] +
                                                        WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02
-        curr_song_partial_audio = songs_list[songs_order[i]].get_partial_audio(start_sec=start_sec, end_sec=end_sec)
-        full_playlist_audio += curr_song_partial_audio
+        curr_song_partial_audio = songs_list[organized_songs_indices[i]].get_partial_audio(start_sec=start_sec, end_sec=end_sec)
+        full_playlist_audio = np.concatenate([full_playlist_audio, curr_song_partial_audio])
 
     save_audio_file(f'playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
 
