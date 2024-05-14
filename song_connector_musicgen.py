@@ -7,14 +7,16 @@ from utils import Graph, fadeout_cur_fadein_next, save_audio_file
 
 os.environ['HF_HOME'] = '/home/yandex/APDL2324a/group_7/'
 
-FADE_DURATION = 3.0
+FADE_DURATION = 2.0
 NUMBER_OF_CODEBOOKS = 4
 
-HOP_SIZE_SAMPLES = 25  # 1 sec / 0.02
+HOP_SIZE_SAMPLES = 25  # 0.5 sec / 0.02
 WINDOW_SIZE_SAMPLES_SUFFIX = 200  # 4 sec/ 0.02
 WINDOW_SIZE_SAMPLES_PREFIX = 200  # 4 sec/ 0.02
 
 FULL_WINDOW_SECONDS = 60
+
+BATCH_SIZE = 100 # batch size should be a multiple of NUMBER_OF_CODEBOOKS
 
 
 def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, token_sequence_2, model, text_tokens):
@@ -86,16 +88,15 @@ def connect_between_songs(song1: Song, song2: Song):
     suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))))
 
     best_prob = -np.inf
-    best_tuple = None
+    best_tuple = (suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, 0)
+
+    partial_suffix_tokens_all_batches = torch.tensor([], dtype=torch.int)
+    partial_prefix_tokens_all_batches = torch.tensor([], dtype=torch.int)
+    tuples = []
 
     for i1 in range(0, suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, HOP_SIZE_SAMPLES):
-        partial_suffix_tokens_batched = torch.tensor([], dtype=torch.int)
-        partial_prefix_tokens_batched = torch.tensor([], dtype=torch.int)
-        tuples = []
-
+        print(f'{i1} / {suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX}')
         for i2 in range(0, prefix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_PREFIX, HOP_SIZE_SAMPLES):
-            print(f'{i1, i2} / {suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, prefix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_PREFIX}')
-
             transition_energy, _ = song1.get_audio_energy_array(
                 song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS + (i1 + WINDOW_SIZE_SAMPLES_SUFFIX)*0.02 - 1,
                                         end_sec=-FULL_WINDOW_SECONDS + (i1 + WINDOW_SIZE_SAMPLES_SUFFIX)*0.02))
@@ -110,14 +111,14 @@ def connect_between_songs(song1: Song, song2: Song):
             partial_suffix_tokens = suffix_tokens.audio_codes[..., i1:i1+WINDOW_SIZE_SAMPLES_SUFFIX][0, 0]
             partial_prefix_tokens = prefix_tokens.audio_codes[..., i2:i2+WINDOW_SIZE_SAMPLES_PREFIX][0, 0]
 
-            partial_suffix_tokens_batched = torch.cat([partial_suffix_tokens_batched, partial_suffix_tokens], dim=0)
-            partial_prefix_tokens_batched = torch.cat([partial_prefix_tokens_batched, partial_prefix_tokens], dim=0)
+            partial_suffix_tokens_all_batches = torch.cat([partial_suffix_tokens_all_batches, partial_suffix_tokens], dim=0)
+            partial_prefix_tokens_all_batches = torch.cat([partial_prefix_tokens_all_batches, partial_prefix_tokens], dim=0)
 
-        ######################
-        # check if batched tokens are empty tensors:
-        if partial_suffix_tokens_batched.nelement() == 0 or partial_prefix_tokens_batched.nelement() == 0:
-            continue
-        ######################
+    print(f"Number of batches: {partial_prefix_tokens_all_batches.shape[0]}, number of pairs to check: {partial_prefix_tokens_all_batches.shape[0] // NUMBER_OF_CODEBOOKS}")
+    for batch_number in range(partial_prefix_tokens_all_batches.shape[0] // BATCH_SIZE):
+        print(f"Batch #{batch_number}")
+        partial_suffix_tokens_batched = partial_suffix_tokens_all_batches[batch_number * BATCH_SIZE: (batch_number + 1) * BATCH_SIZE]
+        partial_prefix_tokens_batched = partial_prefix_tokens_all_batches[batch_number * BATCH_SIZE: (batch_number + 1) * BATCH_SIZE]
 
         log_sum = calculate_log_prob_of_sequence_given_another_sequence(partial_suffix_tokens_batched,
                                                                         partial_prefix_tokens_batched, model, text_tokens)
