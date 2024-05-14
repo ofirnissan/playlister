@@ -143,19 +143,19 @@ def connect_between_songs(song1: Song, song2: Song):
 
     print(f'Best indices: {best_tuple}')
 
-    concat_audio = fadeout_cur_fadein_next(
-        song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02, len(song1.audio))),
-        song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
-        duration=FADE_DURATION)
-
-    save_audio_file(f'{song1.song_name} + {song2.song_name}_long_fader.wav', concat_audio, song1.sr)
-
-    concat_audio = fadeout_cur_fadein_next(
-        song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02, len(song1.audio))),
-        song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
-        duration=1)
-
-    save_audio_file(f'{song1.song_name} + {song2.song_name}_short_fader.wav', concat_audio, song1.sr)
+    # concat_audio = fadeout_cur_fadein_next(
+    #     song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02, len(song1.audio))),
+    #     song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
+    #     duration=FADE_DURATION)
+    #
+    # save_audio_file(f'{song1.song_name} + {song2.song_name}_long_fader.wav', concat_audio, song1.sr)
+    #
+    # concat_audio = fadeout_cur_fadein_next(
+    #     song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02, len(song1.audio))),
+    #     song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
+    #     duration=1)
+    #
+    # save_audio_file(f'{song1.song_name} + {song2.song_name}_short_fader.wav', concat_audio, song1.sr)
 
     return best_prob, best_tuple
 
@@ -200,14 +200,14 @@ def create_full_playlist(songs_dir):
                                                        WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02
         curr_song_partial_audio = songs_list[organized_songs_indices[i]].get_partial_audio(start_sec=start_sec, end_sec=end_sec)
         full_playlist_audio = np.concatenate([full_playlist_audio, curr_song_partial_audio])
-        if i != 0:
-            full_playlist_audio_fader = fadeout_cur_fadein_next(full_playlist_audio_fader, curr_song_partial_audio,
-                                                                32000, duration=FADE_DURATION)
-        else:
-            full_playlist_audio_fader = curr_song_partial_audio
+        # if i != 0:
+        #     full_playlist_audio_fader = fadeout_cur_fadein_next(full_playlist_audio_fader, curr_song_partial_audio,
+        #                                                         32000, duration=FADE_DURATION)
+        # else:
+        #     full_playlist_audio_fader = curr_song_partial_audio
 
     save_audio_file(f'playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
-    save_audio_file(f'playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
+    # save_audio_file(f'playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
 
 
 if __name__ == '__main__':
