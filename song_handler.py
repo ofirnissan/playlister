@@ -95,35 +95,34 @@ class Song:
                 return
         # if dir path is None or the files do not exist in the given directory
         assert self.seperator is not None, "Please provide a seperator object"
-        self.find_vocals_and_accompaniment(suffix=True)
-        self.find_vocals_and_accompaniment(suffix=False)
+        self.find_vocals_and_accompaniment(suffix=True, dir_path=dir_path)
+        self.find_vocals_and_accompaniment(suffix=False, dir_path=dir_path)
 
-    def find_vocals_and_accompaniment(self, suffix=True):
+    def find_vocals_and_accompaniment(self, suffix=True, dir_path=''):
         
         time_in_sec = self.partial_audio_time_in_sec
         separator = self.seperator
         suffix_or_prefix = "suffix" if suffix else "prefix"
 
         # Save the partial audio to a temporary file
-        path = f'{suffix_or_prefix}_{time_in_sec}_sec.wav'
+        path = f'{dir_path}/{suffix_or_prefix}_{time_in_sec}_sec.wav'
         tmp_partial_audio = self.get_partial_audio(start_sec=-time_in_sec) if suffix else self.get_partial_audio(end_sec=time_in_sec)
         sf.write(path, tmp_partial_audio, self.sr)
 
         # Split the audio to vocals and accompaniment
-        output_split_dir = f"spleeter_output/{self.song_name}"
+        output_split_dir = f"{dir_path}"
         separator.separate_to_file(path, output_split_dir)
 
         # Remove the temporary audio file
         os.remove(path)
-        dir_name = path.split('.')[0]
-        # Load the vocals and accompaniment to Song objects
-        home_dir_path = "/mnt/c/Users/ofirn/Documents/oni/elec/playlister"
-        dir_path = os.path.join(home_dir_path, output_split_dir)
-        dir_path = os.path.join(dir_path, dir_name)
-        vocals_path = os.path.join(dir_path, 'dtw_baseline/vocals.wav')
-        print("VOCALS_PATH")
+
+        # Load the vocals and accompaniment to Song object
+        output_split_dir = os.path.join(output_split_dir, f'{suffix_or_prefix}_{time_in_sec}_sec')
+        vocals_path = os.path.join(output_split_dir, 'vocals.wav')
+        print("VOCAL_PATH")
         print(vocals_path)
-        accompaniment_path = os.path.join(dir_path, 'accompaniment.wav')
+        accompaniment_path = os.path.join(output_split_dir, 'accompaniment.wav')
+        print("ACCOMPANIMENT_PATH")
         print(accompaniment_path)
         vocals = Song(vocals_path, remove_zero_amp=False)
         accompaniment = Song(accompaniment_path, remove_zero_amp=False)

@@ -5,6 +5,10 @@ import numpy as np
 import os
 from utils import Graph, fadeout_cur_fadein_next, get_partial_audio
 from utils import show_dtw_cost_matrix_and_wp  # for debug
+from spleeter.separator import Separator
+
+
+os.environ['HF_HOME'] = '/home/joberant/NLP_2324/yaelshemesh'
 
 
 # songs_list_dir = '/home/yandex/APDL2324a/group_7/haviv_playlist/'
@@ -222,16 +226,18 @@ if __name__ == '__main__':
     song_names = os.listdir(SONGS_LIST_DIR)[:3]
     songs = []
     # get all files from dir to song_names list:
-    # sep = Separator('spleeter:2stems')
-    sep = None
+    sep = Separator('spleeter:2stems')
+    # sep = None
     for song_name in song_names:
         print(f"parsing: {song_name}")
         song = Song(SONGS_LIST_DIR + f"{song_name}", seperator=sep, remove_zero_amp=True)
         song.partial_audio_time_in_sec = 60
         time_in_sec = song.partial_audio_time_in_sec
         # song.calc_tempo()
-        # song.find_vocals_and_accompaniment_for_suffix_and_prefix(dir_path=f"/mnt/c/Users/ofirn/Documents/oni/elec/playlister/spleeter_output/{song_name}")
-        # song.get_prefix_and_suffix_energy_array_post_separation()
+        if not os.path.exists(f"/home/joberant/NLP_2324/yaelshemesh/spleeter_output/{song_name}"):
+            os.mkdir(f"/home/joberant/NLP_2324/yaelshemesh/spleeter_output/{song_name}")
+        song.find_vocals_and_accompaniment_for_suffix_and_prefix(dir_path=f"/home/joberant/NLP_2324/yaelshemesh/spleeter_output/{song_name}")
+        song.get_prefix_and_suffix_energy_array_post_separation()
         songs.append(song)
         
         # song.suffix_vocals.plotter.plot_energy_and_rms(threshold=no_vocal_detection_threshold, plot_rms=True, title="suffix_vocal")
@@ -245,10 +251,10 @@ if __name__ == '__main__':
     print([song.song_name for song in songs])
     new_song = songs[0]
     print('concatinating songs...')
-    result_fp = 'concat_song.wav'
+    result_fp = '/home/joberant/NLP_2324/yaelshemesh/outputs/baseline_outputs/spleeter/concat_song.wav'
     for i in range(len(songs)-1):
-        # new_song = concat_between_songs_post_spleeter(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song)
-        new_song = connect_between_songs_by_dtw_only(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song)
+        new_song = concat_between_songs_post_spleeter(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song)
+        # new_song = connect_between_songs_by_dtw_only(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song)
         # new_song = connect_between_songs_by_dtw_only(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song, accompaniment=True)
     sf.write(result_fp, new_song.audio, new_song.sr)
 

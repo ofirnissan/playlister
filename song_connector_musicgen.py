@@ -4,14 +4,15 @@ import numpy as np
 from song_handler import Song
 import torch
 from utils import Graph, fadeout_cur_fadein_next, save_audio_file
+from transformers import AutoTokenizer, MusicgenForConditionalGeneration
 
-os.environ['HF_HOME'] = '/home/yandex/APDL2324a/group_7/'
+os.environ['HF_HOME'] = '/home/joberant/NLP_2324/yaelshemesh'
 
 FADE_DURATION = 2.0
 NUMBER_OF_CODEBOOKS = 4
 
 HOP_SIZE_SAMPLES = 25  # 0.5 sec / 0.02
-WINDOW_SIZE_SAMPLES_SUFFIX = 200  # 4 sec/ 0.02
+WINDOW_SIZE_SAMPLES_SUFFIX = 300  # 6 sec/ 0.02
 WINDOW_SIZE_SAMPLES_PREFIX = 200  # 4 sec/ 0.02
 
 FULL_WINDOW_SECONDS = 60
@@ -25,8 +26,7 @@ def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, toke
 
     print(f"coda available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
-        print("should use gpu")
-        device = 'cuda:3'
+        device = 'cuda'
         model.to(device)
         tokens = tokens.to(device)  # Move tokens to GPU
         text_tokens = text_tokens.to(device)  # Move text_tokens to GPU
@@ -73,11 +73,12 @@ def calculate_log_prob_of_sequence_given_another_sequence_method_2(token_sequenc
 
 def connect_between_songs(song1: Song, song2: Song):
     assert song1.sr == song2.sr
-    from transformers import AutoTokenizer, MusicgenForConditionalGeneration
+    import math
 
     tokenizer = AutoTokenizer.from_pretrained("facebook/musicgen-small")
     model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
-
+    
+    model.to('cuda')
     audio_encoder = model.audio_encoder
     text_tokens = [tokenizer.pad_token_id]
     text_tokens = torch.tensor(text_tokens).reshape((1, len(text_tokens)))
@@ -85,14 +86,14 @@ def connect_between_songs(song1: Song, song2: Song):
     suffix = song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS)
     prefix = song2.get_partial_audio(end_sec=FULL_WINDOW_SECONDS)
 
-    prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))))
-    suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))))
+    prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))).cuda())
+    suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))).cuda())
 
     best_prob = -np.inf
     best_tuple = (suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, 0)
 
-    partial_suffix_tokens_all_batches = torch.tensor([], dtype=torch.int)
-    partial_prefix_tokens_all_batches = torch.tensor([], dtype=torch.int)
+    partial_suffix_tokens_all_batches = torch.tensor([], dtype=torch.int).cuda()
+    partial_prefix_tokens_all_batches = torch.tensor([], dtype=torch.int).cuda()
     tuples = []
 
     for i1 in range(0, suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, HOP_SIZE_SAMPLES):
@@ -115,8 +116,8 @@ def connect_between_songs(song1: Song, song2: Song):
             partial_suffix_tokens_all_batches = torch.cat([partial_suffix_tokens_all_batches, partial_suffix_tokens], dim=0)
             partial_prefix_tokens_all_batches = torch.cat([partial_prefix_tokens_all_batches, partial_prefix_tokens], dim=0)
 
-    print(f"Number of batches: {partial_prefix_tokens_all_batches.shape[0]}, number of pairs to check: {partial_prefix_tokens_all_batches.shape[0] // NUMBER_OF_CODEBOOKS}")
-    for batch_number in range(partial_prefix_tokens_all_batches.shape[0] // BATCH_SIZE):
+    print(f"Number of batches: {partial_prefix_tokens_all_batches.shape[0]/BATCH_SIZE}, number of pairs to check: {partial_prefix_tokens_all_batches.shape[0] // NUMBER_OF_CODEBOOKS}")
+    for batch_number in range(math.ceil(partial_prefix_tokens_all_batches.shape[0]/ BATCH_SIZE)):
         print(f"Batch #{batch_number}")
         partial_suffix_tokens_batched = partial_suffix_tokens_all_batches[batch_number * BATCH_SIZE: (batch_number + 1) * BATCH_SIZE]
         partial_prefix_tokens_batched = partial_prefix_tokens_all_batches[batch_number * BATCH_SIZE: (batch_number + 1) * BATCH_SIZE]
@@ -210,13 +211,13 @@ def create_full_playlist(songs_dir):
         else:
             full_playlist_audio_fader = curr_song_partial_audio
 
-    save_audio_file(f'playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
-    save_audio_file(f'playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_batch_gpu.wav', full_playlist_audio, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_fader_batch_gpu.wav', full_playlist_audio_fader, songs_list[0].sr)
 
 
 if __name__ == '__main__':
 
-    create_full_playlist('/home/yandex/APDL2324a/group_7/haviv_playlist/')
+    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/concert_songs')
     # song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
     # song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
     # connect_between_songs(song1, song2)
