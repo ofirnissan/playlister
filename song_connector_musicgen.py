@@ -12,12 +12,12 @@ FADE_DURATION = 2.0
 NUMBER_OF_CODEBOOKS = 4
 
 HOP_SIZE_SAMPLES = 25  # 0.5 sec / 0.02
-WINDOW_SIZE_SAMPLES_SUFFIX = 300  # 6 sec/ 0.02
-WINDOW_SIZE_SAMPLES_PREFIX = 200  # 4 sec/ 0.02
+WINDOW_SIZE_SAMPLES_SUFFIX = 200  # 4 sec/ 0.02
+WINDOW_SIZE_SAMPLES_PREFIX = 100  # 2 sec/ 0.02
 
-FULL_WINDOW_SECONDS = 60
+FULL_WINDOW_SECONDS = 30
 
-BATCH_SIZE = 100 # batch size should be a multiple of NUMBER_OF_CODEBOOKS
+BATCH_SIZE = 25
 
 
 def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, token_sequence_2, model, text_tokens):
@@ -71,29 +71,40 @@ def calculate_log_prob_of_sequence_given_another_sequence_method_2(token_sequenc
     return log_sum
 
 
+# def get_probability_for_given_token(next_token_batch, logits):
+#     next_token_logits = logits[..., - 1]
+#     next_token_logits_logmax = torch.nn.functional.log_softmax(next_token_logits, dim=-1)
+#
+#     # get the probability for the specific sequence
+#     next_token_logits_logmax = sequence_2_logmax.reshape((token_sequence_2.shape[0]*token_sequence_2.shape[1], 2048))[
+#         range(token_sequence_2.shape[0]*token_sequence_2.shape[1]),
+#         token_sequence_2.reshape(token_sequence_2.shape[0]*token_sequence_2.shape[1])].reshape(token_sequence_2.shape[0],token_sequence_2.shape[1])
+#
+#     batch_sequence_2_logmax = sequence_2_logmax[range(0, logits.shape[0], NUMBER_OF_CODEBOOKS)]
+#
+#     return torch.sum(batch_sequence_2_logmax, dim=-1)
+
 def connect_between_songs(song1: Song, song2: Song):
     assert song1.sr == song2.sr
     import math
 
-    tokenizer = AutoTokenizer.from_pretrained("facebook/musicgen-small")
     model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
-    
-    model.to('cuda')
+
     audio_encoder = model.audio_encoder
-    text_tokens = [tokenizer.pad_token_id]
+    text_tokens = [0]  # pad token id
     text_tokens = torch.tensor(text_tokens).reshape((1, len(text_tokens)))
 
     suffix = song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS)
     prefix = song2.get_partial_audio(end_sec=FULL_WINDOW_SECONDS)
 
-    prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))).cuda())
-    suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))).cuda())
+    prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))))
+    suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))))
 
     best_prob = -np.inf
     best_tuple = (suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, 0)
 
-    partial_suffix_tokens_all_batches = torch.tensor([], dtype=torch.int).cuda()
-    partial_prefix_tokens_all_batches = torch.tensor([], dtype=torch.int).cuda()
+    partial_suffix_tokens_all_batches = torch.tensor([], dtype=torch.int)
+    partial_prefix_tokens_all_batches = torch.tensor([], dtype=torch.int)
     tuples = []
 
     for i1 in range(0, suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, HOP_SIZE_SAMPLES):
@@ -119,13 +130,14 @@ def connect_between_songs(song1: Song, song2: Song):
     print(f"Number of batches: {partial_prefix_tokens_all_batches.shape[0]/BATCH_SIZE}, number of pairs to check: {partial_prefix_tokens_all_batches.shape[0] // NUMBER_OF_CODEBOOKS}")
     for batch_number in range(math.ceil(partial_prefix_tokens_all_batches.shape[0]/ BATCH_SIZE)):
         print(f"Batch #{batch_number}")
-        partial_suffix_tokens_batched = partial_suffix_tokens_all_batches[batch_number * BATCH_SIZE: (batch_number + 1) * BATCH_SIZE]
-        partial_prefix_tokens_batched = partial_prefix_tokens_all_batches[batch_number * BATCH_SIZE: (batch_number + 1) * BATCH_SIZE]
-
+        partial_suffix_tokens_batched = partial_suffix_tokens_all_batches[batch_number * BATCH_SIZE * 4: (batch_number + 1) * BATCH_SIZE * 4]
+        partial_prefix_tokens_batched = partial_prefix_tokens_all_batches[batch_number * BATCH_SIZE * 4: (batch_number + 1) * BATCH_SIZE * 4]
+        tuples_batched = tuples[batch_number * BATCH_SIZE: (batch_number + 1) * BATCH_SIZE]
         log_sum = calculate_log_prob_of_sequence_given_another_sequence(partial_suffix_tokens_batched,
-                                                                        partial_prefix_tokens_batched, model, text_tokens)
+                                                                        partial_prefix_tokens_batched, model,
+                                                                        text_tokens)
         cur_best_prob = torch.max(log_sum)
-        cur_best_tuple = tuples[torch.argmax(log_sum)]
+        cur_best_tuple = tuples_batched[torch.argmax(log_sum)]
         if cur_best_prob > best_prob:
             best_prob = cur_best_prob
             best_tuple = cur_best_tuple
