@@ -15,7 +15,7 @@ HOP_SIZE_SAMPLES = 25  # 0.5 sec / 0.02
 WINDOW_SIZE_SAMPLES_SUFFIX = 200  # 4 sec/ 0.02
 WINDOW_SIZE_SAMPLES_PREFIX = 100  # 2 sec/ 0.02
 
-FULL_WINDOW_SECONDS = 30
+FULL_WINDOW_SECONDS = 60
 
 BATCH_SIZE = 25
 
@@ -26,7 +26,7 @@ def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, toke
 
     print(f"coda available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
-        device = 'cuda'
+        device = 'cuda:3'
         model.to(device)
         tokens = tokens.to(device)  # Move tokens to GPU
         text_tokens = text_tokens.to(device)  # Move text_tokens to GPU
@@ -87,9 +87,10 @@ def calculate_log_prob_of_sequence_given_another_sequence_method_2(token_sequenc
 def connect_between_songs(song1: Song, song2: Song):
     assert song1.sr == song2.sr
     import math
-
+    print("connect")
+    print("load_model")
     model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
-
+    print("encode")
     audio_encoder = model.audio_encoder
     text_tokens = [0]  # pad token id
     text_tokens = torch.tensor(text_tokens).reshape((1, len(text_tokens)))
@@ -106,7 +107,7 @@ def connect_between_songs(song1: Song, song2: Song):
     partial_suffix_tokens_all_batches = torch.tensor([], dtype=torch.int)
     partial_prefix_tokens_all_batches = torch.tensor([], dtype=torch.int)
     tuples = []
-
+    print("create batches")
     for i1 in range(0, suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, HOP_SIZE_SAMPLES):
         print(f'{i1} / {suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX}')
         for i2 in range(0, prefix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_PREFIX, HOP_SIZE_SAMPLES):
@@ -128,6 +129,7 @@ def connect_between_songs(song1: Song, song2: Song):
             partial_prefix_tokens_all_batches = torch.cat([partial_prefix_tokens_all_batches, partial_prefix_tokens], dim=0)
 
     print(f"Number of batches: {partial_prefix_tokens_all_batches.shape[0]/BATCH_SIZE}, number of pairs to check: {partial_prefix_tokens_all_batches.shape[0] // NUMBER_OF_CODEBOOKS}")
+    print("start magic")
     for batch_number in range(math.ceil(partial_prefix_tokens_all_batches.shape[0]/ BATCH_SIZE)):
         print(f"Batch #{batch_number}")
         partial_suffix_tokens_batched = partial_suffix_tokens_all_batches[batch_number * BATCH_SIZE * 4: (batch_number + 1) * BATCH_SIZE * 4]
@@ -178,12 +180,15 @@ def connect_between_songs(song1: Song, song2: Song):
 
 
 def create_full_playlist(songs_dir):
+    print("create_play list")
     number_of_songs = len(os.listdir(songs_dir))
     file_names_list = os.listdir(songs_dir)
     songs_list = [Song(os.path.join(songs_dir, file_names_list[i]), sr=32000) for i in range(number_of_songs)]
+    print("finish load songs")
     adjacency_matrix = np.ones((number_of_songs, number_of_songs)) * np.inf
     cut_indices_suffix = np.zeros((number_of_songs, number_of_songs))
     cut_indices_prefix = np.zeros((number_of_songs, number_of_songs))
+    print("start main loop")
     for i in range(number_of_songs):
         song1 = songs_list[i]
         for j in range(number_of_songs):
@@ -223,13 +228,13 @@ def create_full_playlist(songs_dir):
         else:
             full_playlist_audio_fader = curr_song_partial_audio
 
-    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_batch_gpu.wav', full_playlist_audio, songs_list[0].sr)
-    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_fader_batch_gpu.wav', full_playlist_audio_fader, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_3/playlister_playlist_tuple_fix.wav', full_playlist_audio, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_3//playlister_playlist_fader_tuple_fix.wav', full_playlist_audio_fader, songs_list[0].sr)
 
 
 if __name__ == '__main__':
 
-    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/concert_songs')
+    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/haviv')
     # song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
     # song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
     # connect_between_songs(song1, song2)
