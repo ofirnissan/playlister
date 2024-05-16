@@ -93,8 +93,8 @@ def connect_between_songs(song1: Song, song2: Song, use_accompaniment=False):
 
 
     if use_accompaniment:
-        suffix = song1.suffix_accompaniment
-        prefix = song2.prefix_accompaniment
+        suffix = song1.suffix_accompaniment.audio
+        prefix = song2.prefix_accompaniment.audio
     else:
         suffix = song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS)
         prefix = song2.get_partial_audio(end_sec=FULL_WINDOW_SECONDS)
@@ -236,13 +236,13 @@ def create_full_playlist(songs_dir, use_accompaniment=False):
             full_playlist_audio_fader = curr_song_partial_audio
 
     try:
-        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_numpy.npy', full_playlist_audio)
-        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_fader_numpy.npy', full_playlist_audio_fader)
+        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_numpy.npy', full_playlist_audio)
+        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_fader_numpy.npy', full_playlist_audio_fader)
     except Exception as e:
         print("Failed to save the numpy arrays")
 
-    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen/playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
-    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen/playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
 
 
 if __name__ == '__main__':
