@@ -14,13 +14,12 @@ FADE_DURATION = 2.0
 NUMBER_OF_CODEBOOKS = 4
 
 HOP_SIZE_SAMPLES = 25  # 0.5 sec / 0.02
-WINDOW_SIZE_SAMPLES_SUFFIX = 25  # 4 sec/ 0.02
-WINDOW_SIZE_SAMPLES_PREFIX = 25  # 2 sec/ 0.02
+WINDOW_SIZE_SAMPLES_SUFFIX = 200  # 4 sec/ 0.02
+WINDOW_SIZE_SAMPLES_PREFIX = 100  # 2 sec/ 0.02
 
 FULL_WINDOW_SECONDS = 45
 
 BATCH_SIZE = 25
-ENERGY_THRESHOLD = 10
 
 
 def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, token_sequence_2, model, text_tokens):
@@ -81,37 +80,17 @@ def get_probability_for_given_token(next_token_batch, logits):
     return next_token_logits_logmax.flatten()[next_token_batch.flatten()].reshape(next_token_batch.shape)
 
 
-def get_transition_indices_list(song: Song, number_of_tokens, suffix=True):
-    if suffix:
-        window_size = WINDOW_SIZE_SAMPLES_SUFFIX
-        energy_start_sec = lambda i: -FULL_WINDOW_SECONDS + (i + window_size) * 0.02 - 1
-        energy_end_sec = lambda i: -FULL_WINDOW_SECONDS + (i + window_size) * 0.02
-
-    else:
-        window_size = WINDOW_SIZE_SAMPLES_PREFIX
-        energy_start_sec = lambda i: i * 0.02
-        energy_end_sec = lambda i: i * 0.02 + 1
-
-    transition_indices = np.array([i for i in range(0, number_of_tokens - window_size, HOP_SIZE_SAMPLES)])
-
-    # remove the indices that will cause silent transition
-    transition_indices = transition_indices[
-        [np.mean(song.get_audio_energy_array(song.get_partial_audio(start_sec=energy_start_sec(i),
-                                                                    end_sec=energy_end_sec(i)))[0]) > ENERGY_THRESHOLD
-         for i in transition_indices]]
-
-    return transition_indices
-
-
-def connect_between_songs(song1: Song, song2: Song, model, use_accompaniment=False):
+def connect_between_songs(song1: Song, song2: Song, use_accompaniment=False):
     assert song1.sr == song2.sr
     import math
     print("connect")
-
-    print("encode audio to tokens")
+    print("load_model")
+    model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
+    print("encode")
     audio_encoder = model.audio_encoder
     text_tokens = [0]  # pad token id
     text_tokens = torch.tensor(text_tokens).reshape((1, len(text_tokens)))
+
 
     if use_accompaniment:
         suffix = song1.suffix_accompaniment.audio
@@ -119,6 +98,7 @@ def connect_between_songs(song1: Song, song2: Song, model, use_accompaniment=Fal
     else:
         suffix = song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS)
         prefix = song2.get_partial_audio(end_sec=FULL_WINDOW_SECONDS)
+    
 
     prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))))
     suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))))
@@ -126,52 +106,40 @@ def connect_between_songs(song1: Song, song2: Song, model, use_accompaniment=Fal
     best_prob = -np.inf
     best_tuple = (suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, 0)
 
+    partial_suffix_tokens_all_batches = torch.tensor([], dtype=torch.int)
+    partial_prefix_tokens_all_batches = torch.tensor([], dtype=torch.int)
+    tuples = []
     print("create batches")
+    for i1 in range(0, suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, HOP_SIZE_SAMPLES):
+        print(f'{i1} / {suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX}')
+        for i2 in range(0, prefix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_PREFIX, HOP_SIZE_SAMPLES):
+            transition_energy, _ = song1.get_audio_energy_array(
+                song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS + (i1 + WINDOW_SIZE_SAMPLES_SUFFIX)*0.02 - 1,
+                                        end_sec=-FULL_WINDOW_SECONDS + (i1 + WINDOW_SIZE_SAMPLES_SUFFIX)*0.02))
+            if np.mean(transition_energy) < 10:
+                continue
 
-    suffix_transition_indices = get_transition_indices_list(song1, suffix_tokens.audio_codes.shape[-1], suffix=True)
-    prefix_transition_indices = get_transition_indices_list(song2, prefix_tokens.audio_codes.shape[-1], suffix=False)
+            transition_energy, _ = song2.get_audio_energy_array(
+                song2.get_partial_audio(start_sec=i2 * 0.02, end_sec=i2 * 0.02 + 1))
+            if np.mean(transition_energy) < 10:
+                continue
+            tuples.append((i1, i2))
+            partial_suffix_tokens = suffix_tokens.audio_codes[..., i1:i1+WINDOW_SIZE_SAMPLES_SUFFIX][0, 0]
+            partial_prefix_tokens = prefix_tokens.audio_codes[..., i2:i2+WINDOW_SIZE_SAMPLES_PREFIX][0, 0]
 
-    number_of_tuples_to_check = len(suffix_transition_indices) * len(prefix_transition_indices)
-    number_of_batches = math.ceil(number_of_tuples_to_check / BATCH_SIZE)
+            partial_suffix_tokens_all_batches = torch.cat([partial_suffix_tokens_all_batches, partial_suffix_tokens], dim=0)
+            partial_prefix_tokens_all_batches = torch.cat([partial_prefix_tokens_all_batches, partial_prefix_tokens], dim=0)
 
-    batch_size_suffix = math.ceil(len(suffix_transition_indices) / number_of_batches)
-
-    partial_prefix_tokens = np.array([prefix_tokens.audio_codes[..., i2:i2 + WINDOW_SIZE_SAMPLES_PREFIX][0, 0]
-                                      for i2 in prefix_transition_indices])
-    partial_prefix_tokens_batched = np.tile(partial_prefix_tokens, (batch_size_suffix, 1, 1))
-
-    print(f"Number of batches: {number_of_batches}, number of pairs to check: {number_of_tuples_to_check}")
-
+    print(f"Number of batches: {partial_prefix_tokens_all_batches.shape[0] / (BATCH_SIZE * 4)}, number of pairs to check: {partial_prefix_tokens_all_batches.shape[0] // NUMBER_OF_CODEBOOKS}")
     print("start magic")
-    for batch_number in range(number_of_batches):
+    for batch_number in range(math.ceil(partial_prefix_tokens_all_batches.shape[0]/ (BATCH_SIZE * 4))):
         print(f"Batch #{batch_number}")
-        suffix_transition_indices_batched = suffix_transition_indices[
-                                                            batch_number * batch_size_suffix:
-                                                            (batch_number + 1) * batch_size_suffix]
-        if len(suffix_transition_indices_batched) == 0:
-            break
-        prefix_transition_indices_batched = prefix_transition_indices[:]
-
-        partial_suffix_tokens = np.array([suffix_tokens.audio_codes[..., i1:i1+WINDOW_SIZE_SAMPLES_SUFFIX][0, 0]
-                                          for i1 in suffix_transition_indices_batched])
-
-        partial_suffix_tokens_batched = np.repeat(partial_suffix_tokens, partial_prefix_tokens.shape[0], axis=0)
-        if partial_suffix_tokens.shape[0] != batch_size_suffix:  # can be at the last iteration
-            partial_prefix_tokens_batched = np.tile(partial_prefix_tokens, (partial_suffix_tokens.shape[0], 1, 1))
-
-        partial_suffix_tokens_batched = partial_suffix_tokens_batched.reshape(partial_suffix_tokens_batched.shape[0] *
-                                                                              partial_suffix_tokens_batched.shape[1],
-                                                                              partial_suffix_tokens_batched.shape[2])
-        partial_prefix_tokens_batched = partial_prefix_tokens_batched.reshape(partial_prefix_tokens_batched.shape[0] *
-                                                                              partial_prefix_tokens_batched.shape[1],
-                                                                              partial_prefix_tokens_batched.shape[2])
-
-        tuples_batched = np.array([np.repeat(suffix_transition_indices_batched, partial_prefix_tokens.shape[0]),
-                                   np.tile(prefix_transition_indices_batched, partial_suffix_tokens.shape[0])]).T
-
-        log_sum = calculate_log_prob_of_sequence_given_another_sequence(torch.from_numpy(partial_suffix_tokens_batched),
-                                                                        torch.from_numpy(partial_prefix_tokens_batched),
-                                                                        model, text_tokens)
+        partial_suffix_tokens_batched = partial_suffix_tokens_all_batches[batch_number * BATCH_SIZE * 4: (batch_number + 1) * BATCH_SIZE * 4]
+        partial_prefix_tokens_batched = partial_prefix_tokens_all_batches[batch_number * BATCH_SIZE * 4: (batch_number + 1) * BATCH_SIZE * 4]
+        tuples_batched = tuples[batch_number * BATCH_SIZE: (batch_number + 1) * BATCH_SIZE]
+        log_sum = calculate_log_prob_of_sequence_given_another_sequence(partial_suffix_tokens_batched,
+                                                                        partial_prefix_tokens_batched, model,
+                                                                        text_tokens)
         cur_best_prob = torch.max(log_sum)
         cur_best_tuple = tuples_batched[torch.argmax(log_sum)]
         if cur_best_prob > best_prob:
@@ -194,6 +162,8 @@ def connect_between_songs(song1: Song, song2: Song, model, use_accompaniment=Fal
     #                              end_sec=best_tuple[1] * 0.02 + WINDOW_SIZE_SAMPLES_PREFIX * 0.02)])
     # save_audio_file(f'{song1.song_name} + {song2.song_name}_partial_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
 
+    print(f'Best indices: {best_tuple}')
+
     # concat_audio = fadeout_cur_fadein_next(
     #     song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02, len(song1.audio))),
     #     song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
@@ -211,11 +181,8 @@ def connect_between_songs(song1: Song, song2: Song, model, use_accompaniment=Fal
     return best_prob, best_tuple
 
 
-def create_full_playlist(songs_dir, outpath='/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/',  use_accompaniment=False):
+def create_full_playlist(songs_dir, use_accompaniment=False):
     print("create_play list")
-    print("load_model")
-    model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
-
     number_of_songs = len(os.listdir(songs_dir))
     file_names_list = os.listdir(songs_dir)
     songs_list = [Song(os.path.join(songs_dir, file_names_list[i]), sr=32000) for i in range(number_of_songs)]
@@ -235,7 +202,7 @@ def create_full_playlist(songs_dir, outpath='/home/joberant/NLP_2324/yaelshemesh
             if i == j:
                 continue
             song2 = songs_list[j]
-            best_prob, best_tuple = connect_between_songs(song1, song2, model, use_accompaniment=use_accompaniment)
+            best_prob, best_tuple = connect_between_songs(song1, song2, use_accompaniment=use_accompaniment)
             adjacency_matrix[i, j] = best_prob
             cut_indices_suffix[i, j] = best_tuple[0]
             cut_indices_prefix[i, j] = best_tuple[1]
@@ -269,31 +236,21 @@ def create_full_playlist(songs_dir, outpath='/home/joberant/NLP_2324/yaelshemesh
             full_playlist_audio_fader = curr_song_partial_audio
 
     try:
-        np.save(os.path.join(outpath, f'playlister_playlist_numpy.npy'), full_playlist_audio)
-        np.save(os.path.join(outpath, f'playlister_playlist_fader_numpy.npy'), full_playlist_audio_fader)
-        np.save(os.path.join(outpath, f'songs_name_order.npy'), np.array(songs_name_order))
-        np.save(os.path.join(outpath, f'adjacency_matrix.npy'), adjacency_matrix)
-        np.save(os.path.join(outpath, f'cut_indices_suffix_window_{WINDOW_SIZE_SAMPLES_SUFFIX}_hop_{HOP_SIZE_SAMPLES}.npy'),
-                cut_indices_suffix)
-        np.save(os.path.join(outpath, f'cut_indices_prefix_window_{WINDOW_SIZE_SAMPLES_PREFIX}_hop_{HOP_SIZE_SAMPLES}.npy'),
-                cut_indices_prefix)
-
+        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_numpy.npy', full_playlist_audio)
+        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_fader_numpy.npy', full_playlist_audio_fader)
     except Exception as e:
         print("Failed to save the numpy arrays")
 
-    save_audio_file(os.path.join(outpath, f'playlister_playlist.wav'), full_playlist_audio, songs_list[0].sr)
-    save_audio_file(os.path.join(outpath, f'playlister_playlist_fader.wav'), full_playlist_audio_fader, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
 
 
 if __name__ == '__main__':
-    #create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/haviv', use_accompaniment=True)
-    song1 = Song("eyal\\yafyufa.mp3", sr=32000)
-    song2 = Song("eyal\\malkat hayofi.mp3", sr=32000)
 
-    print("load_model")
-    model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
-
-    connect_between_songs(song1, song2, model)
+    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/haviv', use_accompaniment=True)
+    # song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
+    # song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
+    # connect_between_songs(song1, song2)
     #
     # songs_pairs = np.array([[(song_name_1, song_name_2) for song_name_1 in os.listdir("../eyal")] for song_name_2 in os.listdir("../eyal")])
     # songs_pairs = songs_pairs.reshape((songs_pairs.shape[0] * songs_pairs.shape[1], 2))
