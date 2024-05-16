@@ -224,9 +224,11 @@ def create_full_playlist(songs_dir):
         else:
             full_playlist_audio_fader = curr_song_partial_audio
 
-
-    np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_numpy.npy', full_playlist_audio)
-    np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_fader_numpy.npy', full_playlist_audio_fader)
+    try:
+        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_numpy.npy', full_playlist_audio)
+        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_fader_numpy.npy', full_playlist_audio_fader)
+    except Exception as e:
+        print("Failed to save the numpy arrays")
 
     save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen/playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
     save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen/playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
