@@ -13,7 +13,7 @@ DEVICE = 'cuda:3'
 FADE_DURATION = 2.0
 NUMBER_OF_CODEBOOKS = 4
 
-HOP_SIZE_SAMPLES = 25  # 0.5 sec / 0.02
+HOP_SIZE_SAMPLES = 100  # 0.5 sec / 0.02
 WINDOW_SIZE_SAMPLES_SUFFIX = 200  # 4 sec/ 0.02
 WINDOW_SIZE_SAMPLES_PREFIX = 100  # 2 sec/ 0.02
 
@@ -229,6 +229,7 @@ def create_full_playlist(songs_dir, use_accompaniment=False):
                                                        WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02
         curr_song_partial_audio = songs_list[organized_songs_indices[i]].get_partial_audio(start_sec=start_sec, end_sec=end_sec)
         if use_accompaniment: 
+            print("update audio vocals and audio accomp of suffix and prefix")
             # if we use accompaniment and vocals we need to update the audio of the accompaniment and vocals to the partial audio set by the loop above
             songs_list[organized_songs_indices[i]].suffix_accompaniment.audio = \
                 songs_list[organized_songs_indices[i]].suffix_accompaniment.get_partial_audio(end_sec=end_sec)
@@ -242,6 +243,7 @@ def create_full_playlist(songs_dir, use_accompaniment=False):
         full_playlist_audio = np.concatenate([full_playlist_audio, curr_song_partial_audio])
         if i != 0:
             if use_accompaniment:
+                print("activateing special fader")
                 cur_vocals_audio = songs_list[organized_songs_indices[i]].prefix_vocals.audio
                 cur_accompaniment_audio = songs_list[organized_songs_indices[i]].prefix_accompaniment.audio
                 prev_vocals_audio = songs_list[organized_songs_indices[i-1]].suffix_vocals.audio
@@ -249,12 +251,21 @@ def create_full_playlist(songs_dir, use_accompaniment=False):
                 merged_vocals_audio_fader = fadeout_cur_fadein_next(prev_vocals_audio, cur_vocals_audio,
                                                                     32000, duration=FADE_DURATION, overlap=False)
                 merged_accopmaniment_audio = np.concatenate([prev_accompaniment_audio, cur_accompaniment_audio])
-                
+#                save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/tmp/merged_suf_pref.wav', merged_accopmaniment_audio, songs_list[0].sr)
                 merged_fade_vocals_and_accompaniment = merged_vocals_audio_fader + merged_accopmaniment_audio
-                partial_prev_length = songs_list[organized_songs_indices[i-1]].audio_length
-                partial_cur_length = songs_list[organized_songs_indices[i]].audio_length
+                save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/tmp/merged_suf_pref.wav', merged_fade_vocals_and_accompaniment, songs_list[0].sr)
+ #               partial_prev_length = songs_list[organized_songs_indices[i-1]].audio_length
+#                partial_cur_length = songs_list[organized_songs_indices[i]].audio_length
+                partial_prev_length = len(songs_list[organized_songs_indices[i-1]].suffix_accompaniment.audio)//3200
+                partial_cur_length = len(songs_list[organized_songs_indices[i]].prefix_accompaniment.audio)//3200
+                merged_fade_vocals_and_accompaniment = \
+                    np.concatenate([merged_fade_vocals_and_accompaniment[:len(merged_fade_vocals_and_accompaniment) - partial_cur_length],\
+                    merged_fade_vocals_and_accompaniment[partial_prev_length-int(FADE_DURATION):]])
+                save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/tmp/merged_overlap.wav', merged_fade_vocals_and_accompaniment, songs_list[0].sr)
+                print(partial_prev_length)
+                print(partial_cur_length)
 
-                full_playlist_audio_fader = np.concatenate([get_partial_audio(full_playlist_audio_fader, sr=32000, end_sec=partial_prev_length),
+                full_playlist_audio_fader = np.concatenate([get_partial_audio(full_playlist_audio_fader, sr=32000, end_sec=-partial_prev_length),
                                                             merged_fade_vocals_and_accompaniment,
                                                             get_partial_audio(curr_song_partial_audio, sr=32000, start_sec=partial_cur_length)])
             else:
@@ -263,19 +274,19 @@ def create_full_playlist(songs_dir, use_accompaniment=False):
         else:
             full_playlist_audio_fader = curr_song_partial_audio
 
-    try:
-        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_numpy.npy', full_playlist_audio)
-        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_fader_numpy.npy', full_playlist_audio_fader)
-    except Exception as e:
-        print("Failed to save the numpy arrays")
+   # try:
+       # np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_numpy.npy', full_playlist_audio)
+       # np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_fader_numpy.npy', full_playlist_audio_fader)
+   # except Exception as e:
+   #     print("Failed to save the numpy arrays")
 
-    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
-    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/tmp/playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/tmp/playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
 
 
 if __name__ == '__main__':
 
-    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/haviv', use_accompaniment=True)
+    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/haviv_3', use_accompaniment=True)
     # song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
     # song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
     # connect_between_songs(song1, song2)
