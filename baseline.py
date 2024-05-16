@@ -12,7 +12,7 @@ os.environ['HF_HOME'] = '/home/joberant/NLP_2324/yaelshemesh'
 
 
 # songs_list_dir = '/home/yandex/APDL2324a/group_7/haviv_playlist/'
-SONGS_LIST_DIR = '/home/yandex/APDL2324a/group_7/haviv_playlist/'
+SONGS_LIST_DIR = '/home/joberant/NLP_2324/yaelshemesh/concert_songs/'
 #SONGS_LIST_DIR = '/mnt/c/Users/ofirn/Music/songs/'
 NO_VOCAL_DETECTION_THRESHOLD = 5  # dB ; Threshold for silence detection in the vocals energy array.
 NOISE_THRESHOLD_FOR_TRANSFORMATION = 0  # dB ; Threshold for silence detection in transformation.
@@ -66,6 +66,7 @@ def connect_between_songs_by_dtw_only(song1: Song, song2: Song, file_path: str, 
 
     # Concat songs with overlapping fade and save new song:
     new_audio = fadeout_cur_fadein_next(first_audio, second_audio, song1.sr, duration=FADE_DURATION)
+   # new_audio = np.concatenate([first_audio, second_audio])
     sf.write(file_path, new_audio, first_song.sr)
     new_song = Song(file_path)
     return new_song
@@ -154,7 +155,8 @@ def concat_between_songs_post_spleeter(song1: Song, song2: Song, file_path: str,
     first_song = song_builder if song_builder is not None else song1
     first = first_song.get_partial_audio(end_sec=len(first_song.audio)/song1.sr - song1.partial_audio_time_in_sec + song1_suffix_scilent_intervals[min_i][0] + suffix_cut_audio_index/song1.sr)
     second = song2.get_partial_audio(prefix_cut_audio_index/song2.sr + song2_prefix_scilent_intervals[min_j][0])
-    new_audio = fadeout_cur_fadein_next(first, second, song1.sr, duration=FADE_DURATION)
+    #new_audio = fadeout_cur_fadein_next(first, second, song1.sr, duration=FADE_DURATION)
+    new_audio = np.concatenate([first, second])
 
     sf.write(file_path, new_audio, first_song.sr)
     new_song = Song(file_path)
@@ -223,15 +225,15 @@ def organize_song_list_using_tempo(songs):
 
 
 if __name__ == '__main__':
-    song_names = os.listdir(SONGS_LIST_DIR)[:3]
+    song_names = os.listdir(SONGS_LIST_DIR)
     songs = []
     # get all files from dir to song_names list:
     sep = Separator('spleeter:2stems')
-    # sep = None
+   # sep = None
     for song_name in song_names:
         print(f"parsing: {song_name}")
         song = Song(SONGS_LIST_DIR + f"{song_name}", seperator=sep, remove_zero_amp=True)
-        song.partial_audio_time_in_sec = 60
+        song.partial_audio_time_in_sec = 45
         time_in_sec = song.partial_audio_time_in_sec
         # song.calc_tempo()
         if not os.path.exists(f"/home/joberant/NLP_2324/yaelshemesh/spleeter_output/{song_name}"):
@@ -246,15 +248,15 @@ if __name__ == '__main__':
         # suffix_song.plotter.plot_mel_spectogram()
 
     # songs = organize_song_list_using_tempo(songs)
-    # songs = organize_song_list_using_dtw_optimum_aproximation(songs)
-    songs = organize_song_list_using_dtw_greedy(songs)
+    songs = organize_song_list_using_dtw_optimum_aproximation(songs)
+    #songs = organize_song_list_using_dtw_greedy(songs)
     print([song.song_name for song in songs])
     new_song = songs[0]
     print('concatinating songs...')
-    result_fp = '/home/joberant/NLP_2324/yaelshemesh/outputs/baseline_outputs/spleeter/concat_song.wav'
+    result_fp = '/home/joberant/NLP_2324/yaelshemesh/outputs/concert_songs/spleeter_dtw_baseline/spleeter_dtw_concat_playlist.wav'
     for i in range(len(songs)-1):
         new_song = concat_between_songs_post_spleeter(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song)
-        # new_song = connect_between_songs_by_dtw_only(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song)
+       # new_song = connect_between_songs_by_dtw_only(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song)
         # new_song = connect_between_songs_by_dtw_only(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song, accompaniment=True)
     sf.write(result_fp, new_song.audio, new_song.sr)
 

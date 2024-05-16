@@ -15,7 +15,7 @@ HOP_SIZE_SAMPLES = 25  # 0.5 sec / 0.02
 WINDOW_SIZE_SAMPLES_SUFFIX = 200  # 4 sec/ 0.02
 WINDOW_SIZE_SAMPLES_PREFIX = 100  # 2 sec/ 0.02
 
-FULL_WINDOW_SECONDS = 60
+FULL_WINDOW_SECONDS = 45
 
 BATCH_SIZE = 25
 
@@ -130,7 +130,7 @@ def connect_between_songs(song1: Song, song2: Song):
 
     print(f"Number of batches: {partial_prefix_tokens_all_batches.shape[0]/BATCH_SIZE}, number of pairs to check: {partial_prefix_tokens_all_batches.shape[0] // NUMBER_OF_CODEBOOKS}")
     print("start magic")
-    for batch_number in range(math.ceil(partial_prefix_tokens_all_batches.shape[0]/ BATCH_SIZE)):
+    for batch_number in range(math.ceil(partial_prefix_tokens_all_batches.shape[0]/ (BATCH_SIZE * 4))):
         print(f"Batch #{batch_number}")
         partial_suffix_tokens_batched = partial_suffix_tokens_all_batches[batch_number * BATCH_SIZE * 4: (batch_number + 1) * BATCH_SIZE * 4]
         partial_prefix_tokens_batched = partial_prefix_tokens_all_batches[batch_number * BATCH_SIZE * 4: (batch_number + 1) * BATCH_SIZE * 4]
@@ -228,8 +228,8 @@ def create_full_playlist(songs_dir):
         else:
             full_playlist_audio_fader = curr_song_partial_audio
 
-    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_3/playlister_playlist_tuple_fix.wav', full_playlist_audio, songs_list[0].sr)
-    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_3//playlister_playlist_fader_tuple_fix.wav', full_playlist_audio_fader, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen/playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen/playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
 
 
 if __name__ == '__main__':
