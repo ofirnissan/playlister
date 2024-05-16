@@ -118,9 +118,9 @@ class Graph:
         return organized_vertex
 
 
-def fadeout_cur_fadein_next(audio1, audio2, sr, duration=FADE_DURATION, overlap=True):
-    new_audio_1 = apply_fadeout(audio1, sr, duration)
-    new_audio_2 = apply_fadein(audio2, sr, duration)
+def fadeout_cur_fadein_next(audio1, audio2, sr, duration=FADE_DURATION, overlap=True, fader_low=0.0, fader_high=1.0):
+    new_audio_1 = apply_fadeout(audio1, sr, duration, fader_low, fader_high)
+    new_audio_2 = apply_fadein(audio2, sr, duration, fader_low, fader_high)
     length = int(duration*sr)
     if overlap:
         new_audio = new_audio_1[:]
@@ -132,20 +132,20 @@ def fadeout_cur_fadein_next(audio1, audio2, sr, duration=FADE_DURATION, overlap=
         return new_audio
 
 
-def apply_fadeout(audio, sr, duration=FADE_DURATION):
+def apply_fadeout(audio, sr, duration=FADE_DURATION, fader_low=0.0, fader_high=1.0):
     length = int(duration*sr)
     # linear fade
-    fade_curve = np.linspace(1.0, 0.0, length)
+    fade_curve = np.linspace(fader_high, fader_low, length)
     # apply the curve
     new_audio = audio[:]
     new_audio[-length:] = new_audio[-length:] * fade_curve
     return new_audio
 
 
-def apply_fadein(audio, sr, duration=FADE_DURATION):
+def apply_fadein(audio, sr, duration=FADE_DURATION, fader_low=0.0, fader_high=1.0):
     length = int(duration*sr)
     # linear fade
-    fade_curve = np.linspace(0.0, 1.0, length)
+    fade_curve = np.linspace(fader_low, fader_high, length)
     # apply the curve
     new_audio = audio[:]
     new_audio[:length] = new_audio[:length] * fade_curve
