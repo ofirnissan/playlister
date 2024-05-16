@@ -132,7 +132,7 @@ def fadeout_cur_fadein_next(audio1, audio2, sr, duration=FADE_DURATION, overlap=
         return new_audio
 
 
-def apply_fadeout(audio, sr, duration=FADE_DURATION, fader_low=0.0, fader_high=1.0):
+def apply_fadeout(audio, sr, duration=FADE_DURATION, fader_low=0.1, fader_high=1.0):
     length = int(duration*sr)
     # linear fade
     fade_curve = np.linspace(fader_high, fader_low, length)
@@ -142,7 +142,7 @@ def apply_fadeout(audio, sr, duration=FADE_DURATION, fader_low=0.0, fader_high=1
     return new_audio
 
 
-def apply_fadein(audio, sr, duration=FADE_DURATION, fader_low=0.0, fader_high=1.0):
+def apply_fadein(audio, sr, duration=FADE_DURATION, fader_low=0.1, fader_high=1.0):
     length = int(duration*sr)
     # linear fade
     fade_curve = np.linspace(fader_low, fader_high, length)
