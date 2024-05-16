@@ -1,6 +1,7 @@
 import soundfile as sf
 import sys
 import numpy as np
+import os
 
 FADE_DURATION = 3
 
@@ -164,3 +165,19 @@ def show_dtw_cost_matrix_and_wp(dtw_cost_matrix, wp):
     fig.colorbar(img, ax=ax)
     plt.show()
 
+
+def songs_spleeter(songs_list, time_in_sec, spleeter_output_dir_path):
+    from spleeter.separator import Separator
+    sep = Separator('spleeter:2stems')
+    for song in songs_list:
+        song.seperator = sep  # set the seperator
+        song.partial_audio_time_in_sec = time_in_sec  # set the partial audio time in sec of suffix and prefix
+        song_spleeter_out_path = os.path.join(spleeter_output_dir_path, song.song_name) # set the output path
+        if not os.path.exists(song_spleeter_out_path): # create the output path if not exists
+            os.mkdir(song_spleeter_out_path)
+        # find the vocals and accompaniment for suffix and prefix and save them to the appropriate attributes
+        song.find_vocals_and_accompaniment_for_suffix_and_prefix(dir_path=song_spleeter_out_path) 
+        # get the energy array for the suffix and prefix and save them to the appropriate attributes
+        song.get_prefix_and_suffix_energy_array_post_separation()
+
+    return # no need to return anything since the songs_list is passed by reference

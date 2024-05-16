@@ -80,7 +80,7 @@ def get_probability_for_given_token(next_token_batch, logits):
     return next_token_logits_logmax.flatten()[next_token_batch.flatten()].reshape(next_token_batch.shape)
 
 
-def connect_between_songs(song1: Song, song2: Song):
+def connect_between_songs(song1: Song, song2: Song, use_accompaniment=False):
     assert song1.sr == song2.sr
     import math
     print("connect")
@@ -91,8 +91,14 @@ def connect_between_songs(song1: Song, song2: Song):
     text_tokens = [0]  # pad token id
     text_tokens = torch.tensor(text_tokens).reshape((1, len(text_tokens)))
 
-    suffix = song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS)
-    prefix = song2.get_partial_audio(end_sec=FULL_WINDOW_SECONDS)
+
+    if use_accompaniment:
+        suffix = song1.suffix_accompaniment
+        prefix = song2.prefix_accompaniment
+    else:
+        suffix = song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS)
+        prefix = song2.get_partial_audio(end_sec=FULL_WINDOW_SECONDS)
+    
 
     prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))))
     suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))))
@@ -175,11 +181,16 @@ def connect_between_songs(song1: Song, song2: Song):
     return best_prob, best_tuple
 
 
-def create_full_playlist(songs_dir):
+def create_full_playlist(songs_dir, use_accompaniment=False):
     print("create_play list")
     number_of_songs = len(os.listdir(songs_dir))
     file_names_list = os.listdir(songs_dir)
     songs_list = [Song(os.path.join(songs_dir, file_names_list[i]), sr=32000) for i in range(number_of_songs)]
+    
+    if use_accompaniment:
+        from utils import songs_spleeter
+        songs_spleeter(songs_list, time_in_sec=FULL_WINDOW_SECONDS, spleeter_output_dir_path='/home/joberant/NLP_2324/yaelshemesh/spleeter_output')
+
     print("finish load songs")
     adjacency_matrix = np.ones((number_of_songs, number_of_songs)) * np.inf
     cut_indices_suffix = np.zeros((number_of_songs, number_of_songs))
@@ -191,7 +202,7 @@ def create_full_playlist(songs_dir):
             if i == j:
                 continue
             song2 = songs_list[j]
-            best_prob, best_tuple = connect_between_songs(song1, song2)
+            best_prob, best_tuple = connect_between_songs(song1, song2, use_accompaniment=use_accompaniment)
             adjacency_matrix[i, j] = best_prob
             cut_indices_suffix[i, j] = best_tuple[0]
             cut_indices_prefix[i, j] = best_tuple[1]
@@ -236,7 +247,7 @@ def create_full_playlist(songs_dir):
 
 if __name__ == '__main__':
 
-    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/haviv')
+    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/haviv', use_accompaniment=True)
     # song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
     # song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
     # connect_between_songs(song1, song2)
