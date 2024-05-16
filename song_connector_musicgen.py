@@ -8,6 +8,8 @@ from transformers import AutoTokenizer, MusicgenForConditionalGeneration
 
 os.environ['HF_HOME'] = '/home/joberant/NLP_2324/yaelshemesh'
 
+DEVICE = 'cuda:3'
+
 FADE_DURATION = 2.0
 NUMBER_OF_CODEBOOKS = 4
 
@@ -26,10 +28,9 @@ def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, toke
 
     print(f"coda available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
-        device = 'cuda:3'
-        model.to(device)
-        tokens = tokens.to(device)  # Move tokens to GPU
-        text_tokens = text_tokens.to(device)  # Move text_tokens to GPU
+        model.to(DEVICE)
+        tokens = tokens.to(DEVICE)  # Move tokens to GPU
+        text_tokens = text_tokens.to(DEVICE)  # Move text_tokens to GPU
 
     with torch.no_grad():
         outputs = model(input_ids=text_tokens, decoder_input_ids=tokens)
@@ -43,46 +44,41 @@ def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, toke
         range(token_sequence_2.shape[0]*token_sequence_2.shape[1]),
         token_sequence_2.reshape(token_sequence_2.shape[0]*token_sequence_2.shape[1])].reshape(token_sequence_2.shape[0],token_sequence_2.shape[1])
 
+    # use only the first token - TODO: try using  all tokens
     batch_sequence_2_logmax = sequence_2_logmax[range(0, logits.shape[0], NUMBER_OF_CODEBOOKS)]
 
     return torch.sum(batch_sequence_2_logmax, dim=-1)
 
 
 def calculate_log_prob_of_sequence_given_another_sequence_method_2(token_sequence_1, token_sequence_2, model, text_tokens):
-    tokens = torch.cat([token_sequence_1, token_sequence_2], dim=-1)
+    total_log_sum = torch.zeros((token_sequence_1.shape[0]))
+    if torch.cuda.is_available():
+        model.to(DEVICE)
+    for i in range(token_sequence_2.shape[-1]):
+        tokens = torch.cat([token_sequence_1, token_sequence_2[..., 0:i]], dim=-1)
+        if torch.cuda.is_available():
+            tokens = tokens.to(DEVICE)  # Move tokens to GPU
+            text_tokens = text_tokens.to(DEVICE)  # Move text_tokens to GPU
 
-    log_sum = 0
-    # loop for every token in prefix
-    for i in range(0, WINDOW_SIZE_SAMPLES_PREFIX):
-        curr_tokens = tokens[..., 0: WINDOW_SIZE_SAMPLES_SUFFIX + i]
         with torch.no_grad():
-            outputs = model(input_ids=text_tokens, decoder_input_ids=curr_tokens)
+            outputs = model(input_ids=text_tokens, decoder_input_ids=tokens)
             logits = outputs.logits
-        past_tok, current_tok = i, i + 1
-        log_token_prob = 0
-        for token_dim_index in range(1):
-            token_logit = logits[token_dim_index, -1, :]
-            token_log_probs = torch.nn.functional.log_softmax(token_logit, dim=-1)
-            log_token_prob += token_log_probs[tokens[token_dim_index, current_tok]].item()
 
-        log_sum += log_token_prob
-        # print(f"Token, Log Prob: {log_token_prob}")
+        total_log_sum += get_probability_for_given_token(token_sequence_2[..., i], logits)
 
-    return log_sum
+    # use only the first token - TODO: try using  all tokens
+    total_log_sum = total_log_sum[range(0, total_log_sum.shape[0], NUMBER_OF_CODEBOOKS)]
+
+    return total_log_sum
 
 
-# def get_probability_for_given_token(next_token_batch, logits):
-#     next_token_logits = logits[..., - 1]
-#     next_token_logits_logmax = torch.nn.functional.log_softmax(next_token_logits, dim=-1)
-#
-#     # get the probability for the specific sequence
-#     next_token_logits_logmax = sequence_2_logmax.reshape((token_sequence_2.shape[0]*token_sequence_2.shape[1], 2048))[
-#         range(token_sequence_2.shape[0]*token_sequence_2.shape[1]),
-#         token_sequence_2.reshape(token_sequence_2.shape[0]*token_sequence_2.shape[1])].reshape(token_sequence_2.shape[0],token_sequence_2.shape[1])
-#
-#     batch_sequence_2_logmax = sequence_2_logmax[range(0, logits.shape[0], NUMBER_OF_CODEBOOKS)]
-#
-#     return torch.sum(batch_sequence_2_logmax, dim=-1)
+def get_probability_for_given_token(next_token_batch, logits):
+    next_token_logits = logits[..., - 1, :]
+    next_token_logits_logmax = torch.nn.functional.log_softmax(next_token_logits, dim=-1)
+
+    # return the probability for the specific sequence
+    return next_token_logits_logmax.flatten()[next_token_batch.flatten()].reshape(next_token_batch.shape)
+
 
 def connect_between_songs(song1: Song, song2: Song):
     assert song1.sr == song2.sr
@@ -128,7 +124,7 @@ def connect_between_songs(song1: Song, song2: Song):
             partial_suffix_tokens_all_batches = torch.cat([partial_suffix_tokens_all_batches, partial_suffix_tokens], dim=0)
             partial_prefix_tokens_all_batches = torch.cat([partial_prefix_tokens_all_batches, partial_prefix_tokens], dim=0)
 
-    print(f"Number of batches: {partial_prefix_tokens_all_batches.shape[0]/BATCH_SIZE}, number of pairs to check: {partial_prefix_tokens_all_batches.shape[0] // NUMBER_OF_CODEBOOKS}")
+    print(f"Number of batches: {partial_prefix_tokens_all_batches.shape[0] / (BATCH_SIZE * 4)}, number of pairs to check: {partial_prefix_tokens_all_batches.shape[0] // NUMBER_OF_CODEBOOKS}")
     print("start magic")
     for batch_number in range(math.ceil(partial_prefix_tokens_all_batches.shape[0]/ (BATCH_SIZE * 4))):
         print(f"Batch #{batch_number}")
@@ -227,6 +223,10 @@ def create_full_playlist(songs_dir):
                                                                 32000, duration=FADE_DURATION)
         else:
             full_playlist_audio_fader = curr_song_partial_audio
+
+
+    np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_numpy.npy', full_playlist_audio)
+    np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs_concert/playlister_playlist_fader_numpy.npy', full_playlist_audio_fader)
 
     save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen/playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
     save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen/playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
