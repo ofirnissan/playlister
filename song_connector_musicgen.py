@@ -8,14 +8,14 @@ from transformers import AutoTokenizer, MusicgenForConditionalGeneration
 
 os.environ['HF_HOME'] = '/home/joberant/NLP_2324/yaelshemesh'
 
-DEVICE = 'cuda:3'
+DEVICE = 'cuda:2'
 
 FADE_DURATION = 2.0
 NUMBER_OF_CODEBOOKS = 4
 
-HOP_SIZE_SAMPLES = 25  # 0.5 sec / 0.02
-WINDOW_SIZE_SAMPLES_SUFFIX = 25  # 4 sec/ 0.02
-WINDOW_SIZE_SAMPLES_PREFIX = 25  # 2 sec/ 0.02
+HOP_SIZE_SAMPLES = 50  # 0.5 sec / 0.02
+WINDOW_SIZE_SAMPLES_SUFFIX = 400  # 4 sec/ 0.02
+WINDOW_SIZE_SAMPLES_PREFIX = 200  # 2 sec/ 0.02
 
 FULL_WINDOW_SECONDS = 45
 
@@ -120,8 +120,9 @@ def connect_between_songs(song1: Song, song2: Song, model, use_accompaniment=Fal
         suffix = song1.get_partial_audio(start_sec=-FULL_WINDOW_SECONDS)
         prefix = song2.get_partial_audio(end_sec=FULL_WINDOW_SECONDS)
 
-    prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))))
-    suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))))
+    with torch.no_grad():
+        prefix_tokens = audio_encoder.encode(torch.from_numpy(prefix.reshape(1, 1, len(prefix))))
+        suffix_tokens = audio_encoder.encode(torch.from_numpy(suffix.reshape(1, 1, len(suffix))))
 
     best_prob = -np.inf
     best_tuple = (suffix_tokens.audio_codes.shape[-1] - WINDOW_SIZE_SAMPLES_SUFFIX, 0)
@@ -139,6 +140,9 @@ def connect_between_songs(song1: Song, song2: Song, model, use_accompaniment=Fal
     partial_prefix_tokens = np.array([prefix_tokens.audio_codes[..., i2:i2 + WINDOW_SIZE_SAMPLES_PREFIX][0, 0]
                                       for i2 in prefix_transition_indices])
     partial_prefix_tokens_batched = np.tile(partial_prefix_tokens, (batch_size_suffix, 1, 1))
+    partial_prefix_tokens_batched = partial_prefix_tokens_batched.reshape(partial_prefix_tokens_batched.shape[0] *
+                                                                          partial_prefix_tokens_batched.shape[1],
+                                                                          partial_prefix_tokens_batched.shape[2])
 
     print(f"Number of batches: {number_of_batches}, number of pairs to check: {number_of_tuples_to_check}")
 
@@ -158,13 +162,14 @@ def connect_between_songs(song1: Song, song2: Song, model, use_accompaniment=Fal
         partial_suffix_tokens_batched = np.repeat(partial_suffix_tokens, partial_prefix_tokens.shape[0], axis=0)
         if partial_suffix_tokens.shape[0] != batch_size_suffix:  # can be at the last iteration
             partial_prefix_tokens_batched = np.tile(partial_prefix_tokens, (partial_suffix_tokens.shape[0], 1, 1))
+            partial_prefix_tokens_batched = partial_prefix_tokens_batched.reshape(
+                partial_prefix_tokens_batched.shape[0] *
+                partial_prefix_tokens_batched.shape[1],
+                partial_prefix_tokens_batched.shape[2])
 
         partial_suffix_tokens_batched = partial_suffix_tokens_batched.reshape(partial_suffix_tokens_batched.shape[0] *
                                                                               partial_suffix_tokens_batched.shape[1],
                                                                               partial_suffix_tokens_batched.shape[2])
-        partial_prefix_tokens_batched = partial_prefix_tokens_batched.reshape(partial_prefix_tokens_batched.shape[0] *
-                                                                              partial_prefix_tokens_batched.shape[1],
-                                                                              partial_prefix_tokens_batched.shape[2])
 
         tuples_batched = np.array([np.repeat(suffix_transition_indices_batched, partial_prefix_tokens.shape[0]),
                                    np.tile(prefix_transition_indices_batched, partial_suffix_tokens.shape[0])]).T
@@ -286,14 +291,14 @@ def create_full_playlist(songs_dir, outpath='/home/joberant/NLP_2324/yaelshemesh
 
 
 if __name__ == '__main__':
-    #create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/haviv', use_accompaniment=True)
-    song1 = Song("eyal\\yafyufa.mp3", sr=32000)
-    song2 = Song("eyal\\malkat hayofi.mp3", sr=32000)
-
-    print("load_model")
-    model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
-
-    connect_between_songs(song1, song2, model)
+    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/haviv_3',outpath='/home/joberant/NLP_2324/yaelshemesh/playlyster_outputs',  use_accompaniment=True)
+    # song1 = Song("eyal\\yafyufa.mp3", sr=32000)
+    # song2 = Song("eyal\\malkat hayofi.mp3", sr=32000)
+    #
+    # print("load_model")
+    # model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
+    #
+    # connect_between_songs(song1, song2, model)
     #
     # songs_pairs = np.array([[(song_name_1, song_name_2) for song_name_1 in os.listdir("../eyal")] for song_name_2 in os.listdir("../eyal")])
     # songs_pairs = songs_pairs.reshape((songs_pairs.shape[0] * songs_pairs.shape[1], 2))
