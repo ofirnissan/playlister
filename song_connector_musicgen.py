@@ -3,7 +3,7 @@ import os
 import numpy as np
 from song_handler import Song
 import torch
-from utils import Graph, fadeout_cur_fadein_next, save_audio_file
+from utils import Graph, fadeout_cur_fadein_next, save_audio_file, get_partial_audio
 from transformers import AutoTokenizer, MusicgenForConditionalGeneration
 
 os.environ['HF_HOME'] = '/home/joberant/NLP_2324/yaelshemesh'
@@ -228,10 +228,38 @@ def create_full_playlist(songs_dir, use_accompaniment=False):
                                                       (cut_indices_suffix[organized_songs_indices[i], organized_songs_indices[i+1]] +
                                                        WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02
         curr_song_partial_audio = songs_list[organized_songs_indices[i]].get_partial_audio(start_sec=start_sec, end_sec=end_sec)
+        if use_accompaniment: 
+            # if we use accompaniment and vocals we need to update the audio of the accompaniment and vocals to the partial audio set by the loop above
+            songs_list[organized_songs_indices[i]].suffix_accompaniment.audio = \
+                songs_list[organized_songs_indices[i]].suffix_accompaniment.get_partial_audio(end_sec=end_sec)
+            songs_list[organized_songs_indices[i]].suffix_vocals.audio = \
+                songs_list[organized_songs_indices[i]].suffix_vocals.get_partial_audio(end_sec=end_sec)
+            songs_list[organized_songs_indices[i]].prefix_accompaniment.audio = \
+                songs_list[organized_songs_indices[i]].prefix_accompaniment.get_partial_audio(start_sec=start_sec)
+            songs_list[organized_songs_indices[i]].prefix_vocals.audio = \
+                songs_list[organized_songs_indices[i]].prefix_vocals.get_partial_audio(start_sec=start_sec)
+            
         full_playlist_audio = np.concatenate([full_playlist_audio, curr_song_partial_audio])
         if i != 0:
-            full_playlist_audio_fader = fadeout_cur_fadein_next(full_playlist_audio_fader, curr_song_partial_audio,
-                                                                32000, duration=FADE_DURATION)
+            if use_accompaniment:
+                cur_vocals_audio = songs_list[organized_songs_indices[i]].prefix_vocals.audio
+                cur_accompaniment_audio = songs_list[organized_songs_indices[i]].prefix_accompaniment.audio
+                prev_vocals_audio = songs_list[organized_songs_indices[i-1]].suffix_vocals.audio
+                prev_accompaniment_audio = songs_list[organized_songs_indices[i-1]].suffix_accompaniment.audio
+                merged_vocals_audio_fader = fadeout_cur_fadein_next(prev_vocals_audio, cur_vocals_audio,
+                                                                    32000, duration=FADE_DURATION, overlap=False)
+                merged_accopmaniment_audio = np.concatenate([prev_accompaniment_audio, cur_accompaniment_audio])
+                
+                merged_fade_vocals_and_accompaniment = merged_vocals_audio_fader + merged_accopmaniment_audio
+                partial_prev_length = songs_list[organized_songs_indices[i-1]].audio_length
+                partial_cur_length = songs_list[organized_songs_indices[i]].audio_length
+
+                full_playlist_audio_fader = np.concatenate([get_partial_audio(full_playlist_audio_fader, sr=32000, end_sec=partial_prev_length),
+                                                            merged_fade_vocals_and_accompaniment,
+                                                            get_partial_audio(curr_song_partial_audio, sr=32000, start_sec=partial_cur_length)])
+            else:
+                full_playlist_audio_fader = fadeout_cur_fadein_next(full_playlist_audio_fader, curr_song_partial_audio,
+                                                                    32000, duration=FADE_DURATION) 
         else:
             full_playlist_audio_fader = curr_song_partial_audio
 

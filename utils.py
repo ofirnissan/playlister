@@ -118,14 +118,18 @@ class Graph:
         return organized_vertex
 
 
-def fadeout_cur_fadein_next(audio1, audio2, sr, duration=FADE_DURATION):
+def fadeout_cur_fadein_next(audio1, audio2, sr, duration=FADE_DURATION, overlap=True):
     new_audio_1 = apply_fadeout(audio1, sr, duration)
     new_audio_2 = apply_fadein(audio2, sr, duration)
     length = int(duration*sr)
-    new_audio = new_audio_1[:]
-    new_audio[-length:] += new_audio_2[:length]
-    new_audio = np.concatenate((new_audio, new_audio_2[length:]))
-    return new_audio
+    if overlap:
+        new_audio = new_audio_1[:]
+        new_audio[-length:] += new_audio_2[:length]
+        new_audio = np.concatenate((new_audio, new_audio_2[length:]))
+        return new_audio
+    else:
+        new_audio = np.concatenate((new_audio_1, new_audio_2))
+        return new_audio
 
 
 def apply_fadeout(audio, sr, duration=FADE_DURATION):
