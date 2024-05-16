@@ -88,10 +88,10 @@ class Song:
             if os.path.exists(vocals_suffix_path) and os.path.exists(accompaniment_suffix_path) and \
             os.path.exists(vocals_prefix_path) and os.path.exists(accompaniment_prefix_path):
                 # if files exist load them to Song objects
-                self.suffix_vocals = Song(vocals_suffix_path, remove_zero_amp=False)
-                self.suffix_accompaniment = Song(accompaniment_suffix_path, remove_zero_amp=False)
-                self.prefix_vocals = Song(vocals_prefix_path, remove_zero_amp=False)
-                self.prefix_accompaniment = Song(accompaniment_prefix_path, remove_zero_amp=False)
+                self.suffix_vocals = Song(vocals_suffix_path, sr=self.sr, remove_zero_amp=False)
+                self.suffix_accompaniment = Song(accompaniment_suffix_path, sr=self.sr, remove_zero_amp=False)
+                self.prefix_vocals = Song(vocals_prefix_path, sr=self.sr, remove_zero_amp=False)
+                self.prefix_accompaniment = Song(accompaniment_prefix_path, sr=self.sr, remove_zero_amp=False)
                 return
         # if dir path is None or the files do not exist in the given directory
         assert self.seperator is not None, "Please provide a seperator object"
@@ -124,8 +124,8 @@ class Song:
         accompaniment_path = os.path.join(output_split_dir, 'accompaniment.wav')
         print("ACCOMPANIMENT_PATH")
         print(accompaniment_path)
-        vocals = Song(vocals_path, remove_zero_amp=False)
-        accompaniment = Song(accompaniment_path, remove_zero_amp=False)
+        vocals = Song(vocals_path, sr=self.sr, remove_zero_amp=False)
+        accompaniment = Song(accompaniment_path, sr=self.sr, remove_zero_amp=False)
 
         if suffix:
             self.suffix_vocals = vocals
