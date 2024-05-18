@@ -9,18 +9,18 @@ from transformers import AutoTokenizer, MusicgenForConditionalGeneration
 cache_dir_path = '/home/joberant/NLP_2324/yaelshemesh'
 os.environ['HF_HOME'] = cache_dir_path
 
-DEVICE = 'cuda:3'
+DEVICE = 'cuda'
 
 FADE_DURATION = 2.0
 NUMBER_OF_CODEBOOKS = 4
 
-HOP_SIZE_SAMPLES = 100  # 0.5 sec / 0.02
+HOP_SIZE_SAMPLES = 25  # 0.5 sec / 0.02
 WINDOW_SIZE_SAMPLES_SUFFIX = 200  # 4 sec/ 0.02
 WINDOW_SIZE_SAMPLES_PREFIX = 100  # 2 sec/ 0.02
 
 FULL_WINDOW_SECONDS = 45
 
-BATCH_SIZE = 25
+BATCH_SIZE = 50
 
 
 def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, token_sequence_2, model, text_tokens):
@@ -182,7 +182,7 @@ def connect_between_songs(song1: Song, song2: Song, use_accompaniment=False):
     return best_prob, best_tuple
 
 
-def create_full_playlist(songs_dir, use_accompaniment=False):
+def create_full_playlist(songs_dir, use_accompaniment=False, fade_vocals=False):
     print("create_play list")
     number_of_songs = len(os.listdir(songs_dir))
     file_names_list = os.listdir(songs_dir)
@@ -229,7 +229,7 @@ def create_full_playlist(songs_dir, use_accompaniment=False):
                                                       (cut_indices_suffix[organized_songs_indices[i], organized_songs_indices[i+1]] +
                                                        WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02
         curr_song_partial_audio = songs_list[organized_songs_indices[i]].get_partial_audio(start_sec=start_sec, end_sec=end_sec)
-        if use_accompaniment: 
+        if fade_vocals: 
             print("update audio vocals and audio accomp of suffix and prefix")
             cur_audio = songs_list[organized_songs_indices[i]].audio
             sr = songs_list[organized_songs_indices[i]].sr
@@ -246,17 +246,17 @@ def create_full_playlist(songs_dir, use_accompaniment=False):
             
         full_playlist_audio = np.concatenate([full_playlist_audio, curr_song_partial_audio])
         if i != 0:
-            if use_accompaniment:
+            if fade_vocals:
                 print("activateing special fader")
                 cur_vocals_audio = songs_list[organized_songs_indices[i]].prefix_vocals.audio
                 cur_accompaniment_audio = songs_list[organized_songs_indices[i]].prefix_accompaniment.audio
                 prev_vocals_audio = songs_list[organized_songs_indices[i-1]].suffix_vocals.audio
                 prev_accompaniment_audio = songs_list[organized_songs_indices[i-1]].suffix_accompaniment.audio
                 merged_vocals_audio_fader = fadeout_cur_fadein_next(prev_vocals_audio, cur_vocals_audio,
-                                                                    32000, duration=FADE_DURATION, overlap=False)
+                                                                    32000, duration=FADE_DURATION, overlap=True, fader_low=0.0)
                 merged_accopmaniment_audio = np.concatenate([prev_accompaniment_audio, cur_accompaniment_audio])
                 merged_fade_vocals_and_accompaniment = merged_vocals_audio_fader + merged_accopmaniment_audio
-                save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/tmp/merged_suf_pref.wav', merged_fade_vocals_and_accompaniment, songs_list[0].sr)
+#                save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/tmp/merged_suf_pref.wav', merged_fade_vocals_and_accompaniment, songs_list[0].sr)
                 partial_prev_length = len(songs_list[organized_songs_indices[i-1]].suffix_accompaniment.audio)
                 partial_cur_length = len(songs_list[organized_songs_indices[i]].prefix_accompaniment.audio)
 #                merged_fade_vocals_and_accompaniment = \
@@ -278,19 +278,19 @@ def create_full_playlist(songs_dir, use_accompaniment=False):
         else:
             full_playlist_audio_fader = curr_song_partial_audio
 
-   # try:
-       # np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_numpy.npy', full_playlist_audio)
-       # np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/playlister_playlist_fader_numpy.npy', full_playlist_audio_fader)
-   # except Exception as e:
-   #     print("Failed to save the numpy arrays")
+    try:
+        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/yael_playlist/fader_vocals_musicgen_spleeter/playlister_playlist_np_NOfader_nofadevocals.npy', full_playlist_audio)
+        np.save(f'/home/joberant/NLP_2324/yaelshemesh/outputs/yael_playlist/fader_vocals_musicgen_spleeter/playlister_playlist_np_fader_nofadevocals.npy', full_playlist_audio_fader)
+    except Exception as e:
+        print("Failed to save the numpy arrays")
 
-    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/tmp/playlister_playlist.wav', full_playlist_audio, songs_list[0].sr)
-    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/tmp/playlister_playlist_fader.wav', full_playlist_audio_fader, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/yael_playlist/fader_vocals_musicgen_spleeter/playlister_playlist_NOfader_nofadevocals.wav', full_playlist_audio, songs_list[0].sr)
+    save_audio_file(f'/home/joberant/NLP_2324/yaelshemesh/outputs/yael_playlist/fader_vocals_musicgen_spleeter/playlister_playlist_fader_nofadevocals.wav', full_playlist_audio_fader, songs_list[0].sr)
 
 
 if __name__ == '__main__':
 
-    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/haviv_3', use_accompaniment=True)
+    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/yael_playlist', use_accompaniment=True, fade_vocals=False)
     # song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
     # song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
     # connect_between_songs(song1, song2)
