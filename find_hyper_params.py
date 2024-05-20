@@ -4,12 +4,13 @@ import torch
 import numpy as np
 import os
 from song_connector_musicgen import NUMBER_OF_CODEBOOKS, calculate_log_prob_of_sequence_given_another_sequence
+import matplotlib.pyplot as plt
 
 
 SONG_DIRECTORY = 'C:\\Users\\yaelshe\\PycharmProjects\\playlister\\yael_playlist'
 
 
-def calculate_loss(songs_tokens, suffix_window_size_sec, prefix_window_size_sec, model):
+def calculate_loss(songs_tokens, suffix_window_size_sec, prefix_window_size_sec, model, codebook=0):
     suffix_window_size_tokens = int(suffix_window_size_sec / 0.02)
     prefix_window_size_tokens = int(prefix_window_size_sec / 0.02)
     probabilities_for_same_song_all = 0
@@ -48,12 +49,21 @@ def calculate_loss(songs_tokens, suffix_window_size_sec, prefix_window_size_sec,
 
         probabilities_for_same_song = calculate_log_prob_of_sequence_given_another_sequence(list_of_song_suffixes,
                                                                                             list_of_song_prefixes,
-                                                                                            model)
+                                                                                            model, codebook=codebook)
         probabilities_for_another_song = calculate_log_prob_of_sequence_given_another_sequence(
-            list_of_song_suffixes, list_of_prefixes_from_another_song_rand, model)
+            list_of_song_suffixes, list_of_prefixes_from_another_song_rand, model, codebook=codebook)
         probabilities_for_same_song_all += sum(probabilities_for_same_song) / len(probabilities_for_same_song)
         probabilities_for_another_song_all += sum(probabilities_for_another_song) / len(probabilities_for_another_song)
     return probabilities_for_same_song_all, probabilities_for_another_song_all
+
+
+def plot_loss(title, x_label, x, y):
+    plt.figure()
+    plt.plot(x, y, s=50)
+    plt.xlabel(x_label)
+    plt.ylabel('loss')
+    plt.title(title)
+    plt.show()
 
 
 if __name__ == '__main__':
@@ -70,8 +80,23 @@ if __name__ == '__main__':
         curr_tokens = audio_encoder.encode(torch.from_numpy(song.audio.reshape(1, 1, len(song.audio))))
         songs_tokens.append(curr_tokens)
 
-    for suffix_window_size_sec, prefix_window_size_sec in [(2, 2), (2.5, 2), (3, 2), (3.5, 2), (4, 2), (4.5, 2), (5, 2), (6, 2), (7, 2)]:
-        print(f"suffix_window_size_sec: {suffix_window_size_sec}; prefix_window_size_sec: {prefix_window_size_sec}")
-        probabilities_for_same_song, probabilities_for_another_song = calculate_loss(songs_tokens, suffix_window_size_sec, prefix_window_size_sec, model)
-        loss = probabilities_for_another_song - probabilities_for_same_song
-        print(f"probabilities_for_same_song: {probabilities_for_same_song}, probabilities_for_another_song: {probabilities_for_another_song}, Loss: {loss}")
+    for hyperparams_list in [
+        # different codebooks
+        [(5, 2, 0), (5, 2, 1), (5, 2, 2), (5, 2, 3)],
+        # different prefix_window_size_sec
+        [(4, 0.02, 0), (4, 0.25, 0), (4, 0.5, 0), (4, 1, 0), (4, 1.5, 0), (4, 2, 0), (4, 2.5, 0), (4, 3, 0), (4, 4, 0)],
+        # different suffix_window_size_sec
+        [(2, 2, 0), (2.5, 2, 0), (3, 2, 0), (3.5, 2, 0), (4, 2, 0), (4.5, 2, 0), (5, 2, 0), (6, 2, 0), (7, 2, 0)]
+    ]:
+        for suffix_window_size_sec, prefix_window_size_sec, codebook in hyperparams_list:
+            print(f"suffix_window_size_sec: {suffix_window_size_sec}; prefix_window_size_sec: {prefix_window_size_sec}; codebook: {codebook}")
+            probabilities_for_same_song, probabilities_for_another_song = calculate_loss(songs_tokens, suffix_window_size_sec, prefix_window_size_sec, model, codebook=codebook)
+            loss = probabilities_for_another_song - probabilities_for_same_song
+            print(f"probabilities_for_same_song: {probabilities_for_same_song}, probabilities_for_another_song: {probabilities_for_another_song}, Loss: {loss}")
+
+    #  ------------- plot example --------------
+
+    suffix_x = [2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7]
+    suffix_y = [-179.7879638671875, -192.915771484375, -214.9764404296875, -217.2119140625, -244.0914306640625,
+                -251.3134765625, -269.43701171875, -273.569091796875, -266.1756591796875]
+    plot_loss('Loss for Prefix Window: 2 Sec and Different Suffix Windows', 'suffix window (sec)', suffix_x, suffix_y)
