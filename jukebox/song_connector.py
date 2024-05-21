@@ -12,10 +12,13 @@ os.environ['TORCH_HOME'] = PATH
 
 DEVICE = 'cuda:2'
 
+
 def connect_between_songs(song1: Song, song2: Song):
     # Use a pipeline as a high-level helper
     from transformers import pipeline
     model = JukeboxPrior.from_pretrained("openai/jukebox-1b-lyrics", cache_dir=PATH, min_duration=0, config=None).eval()
+    pre = JukeboxPrior()
+    pre.sample()
     song_1_audio = torch.from_numpy(song1.get_partial_audio(start_sec=-30, end_sec=-26))
     song_1_audio_next = torch.from_numpy(song1.get_partial_audio(start_sec=-26, end_sec=-24))
     song_2_audio = torch.from_numpy(song2.get_partial_audio(start_sec=28, end_sec=30))
@@ -48,8 +51,8 @@ def connect_between_songs_music_lm(song: Song):
 
 
 if __name__ == '__main__':
-    song1 = Song("/vol/joberant_nobck/data/NLP_368307701_2324/yaelshemesh/haviv_3/KONGOS - Come with Me Now.mp3", sr=44100)
-    song2 = Song("/vol/joberant_nobck/data/NLP_368307701_2324/yaelshemesh/haviv_3/Jay-Z, Linkin Park - Numb _ Encore my-free-mp3s.com .mp3", sr=44100)
+    song1 = Song("ofir_playlist\\Calvin Harris, Dua Lipa - One Kiss.mp3", sr=44100)
+    song2 = Song("ofir_playlist\\Ariana Grande - 7 rings.mp3", sr=44100)
 
     connect_between_songs(song1, song2)
 
