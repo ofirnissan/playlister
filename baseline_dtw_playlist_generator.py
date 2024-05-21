@@ -233,10 +233,10 @@ def create_full_playlist_using_dtw(outpath, songs_list_dir, home_directory, use_
     song_names = os.listdir(songs_list_dir)
     songs = []
     sep = None
+    spleeter_output_dir_path = os.path.join(home_directory, 'spleeter_output')
     if use_spleeter:
         from spleeter.separator import Separator
         sep = Separator('spleeter:2stems')
-        spleeter_output_dir_path = os.path.join(home_directory, 'spleeter_output')
         os.makedirs(spleeter_output_dir_path, exist_ok=True)
 
     assert len(song_names) != 0
