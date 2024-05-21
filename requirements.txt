@@ -4,3 +4,4 @@ librosa
 transformers
 soundfile
 spleeter
+matplotlib

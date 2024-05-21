@@ -236,9 +236,10 @@ def create_full_playlist_using_dtw(outpath, songs_list_dir, home_directory, use_
     if use_spleeter:
         from spleeter.separator import Separator
         sep = Separator('spleeter:2stems')
-    spleeter_output_dir_path = os.path.join(home_directory, 'spleeter_output')
-    os.makedirs(spleeter_output_dir_path, exist_ok=True)
+        spleeter_output_dir_path = os.path.join(home_directory, 'spleeter_output')
+        os.makedirs(spleeter_output_dir_path, exist_ok=True)
 
+    assert len(song_names) != 0
     # Get all files from dir to song_names list:
     for song_name in song_names:
         print(f"parsing: {song_name}")
@@ -295,5 +296,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     os.environ['HF_HOME'] = args.home_dir
 
-    create_full_playlist_using_dtw(args.songs_dir, args.outpath, home_directory=args.home_dir,
+    create_full_playlist_using_dtw(args.outpath, args.songs_dir, home_directory=args.home_dir,
                                    use_spleeter=args.use_spleeter, fade_duration=args.fade_duration)
