@@ -168,43 +168,6 @@ for i in range(1, len(order_songs_list_dtw)):
 tempo_ratio_sum_baseline /= len(order_songs_list_dtw) - 1
 beat_dist_sum_baseline /= len(order_songs_list_dtw) - 1
 
-# ====================================================================================================
-# Calculate tempo ratio and last to first beat distance ratio for Random solution:
-# ====================================================================================================
-# Read all songs in the input path, shuffle their order randomly, and create a long audio with all of them concatenated    
-# songs = []
-# songs_end_secs = []
-# songs_start_secs = []
-# songs_start_secs = []
-# songs_file_full_path = os.path.join(songs_files_dir, PLAYLIST)
-# for song_name in os.listdir(songs_file_full_path):
-#     songs.append(song)
-#     songs_end_secs.append(song.audio.shape[0]/song.sr)
-#     songs_start_secs.append(0 if len(songs_start_secs) == 0 else songs_end_secs[-2]) # 0 if first song, else the end of the previous song
-
-# np.random.shuffle(songs)
-# long_audio = np.concatenate([song.audio for song in songs])
-
-
-# tempo_ratio_sum_random = 0
-# last_to_first_beat_distance_sum_random = 0
-# window = 10
-# sr = songs[0].sr
-# for i in range(1, len(songs)):
-#     idx1 = i-1
-#     idx2 = i
-#     suffix_song1 = songs[idx1].get_partial_audio(start_sec=songs_end_secs[idx1]-window,
-#                                                             end_sec=songs_end_secs[idx1])
-#     prefix_song2 = songs[idx2].get_partial_audio(start_sec=songs_start_secs[idx2],
-#                                                             end_sec=songs_start_secs[idx2]+window)
-#     tempo_ratio, real_dist_to_expected_dist_ratio = get_tempo_ratio_of_two_audios(suffix_song1, prefix_song2, sr)
-#     tempo_ratio = tempo_ratio if isinstance(tempo_ratio, float) else tempo_ratio[0]
-#     real_dist_to_expected_dist_ratio = real_dist_to_expected_dist_ratio if isinstance(real_dist_to_expected_dist_ratio, float) else real_dist_to_expected_dist_ratio[0]
-#     tempo_ratio_sum_random += tempo_ratio
-#     last_to_first_beat_distance_sum_random += real_dist_to_expected_dist_ratio
-
-# tempo_ratio_sum_random /= len(songs) - 1
-# last_to_first_beat_distance_sum_random /= len(songs) - 1
 
 # ====================================================================================================
 # Plot bar chart of tempo ratio and last to first beat distance ratio for all results:
@@ -220,8 +183,6 @@ for playlist_key in playlists_dict.keys():
 # add baseline results:
 tempo_ratio_list.append(tempo_ratio_sum_baseline[0])
 last_to_first_beat_distance_list.append(beat_dist_sum_baseline[0])
-tempo_ratio_list.append(tempo_ratio_sum_random)
-last_to_first_beat_distance_list.append(last_to_first_beat_distance_sum_random)
 
 x = np.arange(len(window_pairs)+2)
 

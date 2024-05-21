@@ -1,14 +1,13 @@
-from typing import List
 from song_handler import Song
 import torch
 import numpy as np
 import os
-from song_connector_musicgen import NUMBER_OF_CODEBOOKS, calculate_log_prob_of_sequence_given_another_sequence
+from musicgen_based_playlist_generator import NUMBER_OF_CODEBOOKS, calculate_log_prob_of_sequence_given_another_sequence
 import matplotlib.pyplot as plt
 
 
-SONG_DIRECTORY = 'C:\\Users\\yaelshe\\PycharmProjects\\playlister\\yael_playlist'
-
+DEFAULT_SONGS_DIR = 'yael_playlist'
+PATH = "/home/joberant/NLP_2324/yaelshemesh"
 
 def calculate_loss(songs_tokens, suffix_window_size_sec, prefix_window_size_sec, model, codebook=0):
     suffix_window_size_tokens = int(suffix_window_size_sec / 0.02)
@@ -66,20 +65,18 @@ def plot_loss(title, x_label, x, y):
     plt.show()
 
 
-if __name__ == '__main__':
-    songs_dir = 'playlist'
+def find_hyper_params(songs_dir, home_dir):
+    global audio_encoder
     number_of_songs = len(os.listdir(songs_dir))
     file_names_list = os.listdir(songs_dir)
     songs_list = [Song(os.path.join(songs_dir, file_names_list[i]), sr=32000) for i in range(3)]
-
     from transformers import MusicgenForConditionalGeneration
-    model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
+    model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small", cache_dir=home_dir)
     audio_encoder = model.audio_encoder
     songs_tokens = []
     for song in songs_list:
         curr_tokens = audio_encoder.encode(torch.from_numpy(song.audio.reshape(1, 1, len(song.audio))))
         songs_tokens.append(curr_tokens)
-
     for hyperparams_list in [
         # different codebooks
         [(5, 2, 0), (5, 2, 1), (5, 2, 2), (5, 2, 3)],
@@ -89,14 +86,37 @@ if __name__ == '__main__':
         [(2, 2, 0), (2.5, 2, 0), (3, 2, 0), (3.5, 2, 0), (4, 2, 0), (4.5, 2, 0), (5, 2, 0), (6, 2, 0), (7, 2, 0)]
     ]:
         for suffix_window_size_sec, prefix_window_size_sec, codebook in hyperparams_list:
-            print(f"suffix_window_size_sec: {suffix_window_size_sec}; prefix_window_size_sec: {prefix_window_size_sec}; codebook: {codebook}")
-            probabilities_for_same_song, probabilities_for_another_song = calculate_loss(songs_tokens, suffix_window_size_sec, prefix_window_size_sec, model, codebook=codebook)
+            print(
+                f"suffix_window_size_sec: {suffix_window_size_sec}; prefix_window_size_sec: {prefix_window_size_sec}; codebook: {codebook}")
+            probabilities_for_same_song, probabilities_for_another_song = calculate_loss(songs_tokens,
+                                                                                         suffix_window_size_sec,
+                                                                                         prefix_window_size_sec, model,
+                                                                                         codebook=codebook)
             loss = probabilities_for_another_song - probabilities_for_same_song
-            print(f"probabilities_for_same_song: {probabilities_for_same_song}, probabilities_for_another_song: {probabilities_for_another_song}, Loss: {loss}")
+            print(
+                f"probabilities_for_same_song: {probabilities_for_same_song}, probabilities_for_another_song: {probabilities_for_another_song}, Loss: {loss}")
+
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='Characterize hyper params to find the best fit.')
+    parser.add_argument("--home_dir", type=str, default=PATH, help='model cache will be saved here')
+    parser.add_argument("--songs_dir", type=str, default=DEFAULT_SONGS_DIR,
+                        help='directory with songs that you wish to create a playlist out of them')
+
+    args = parser.parse_args()
+    os.environ['HF_HOME'] = args.home_dir
+
+    find_hyper_params(args.songs_dir, args.home_dir)
 
     #  ------------- plot example --------------
 
-    suffix_x = [2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7]
-    suffix_y = [-179.7879638671875, -192.915771484375, -214.9764404296875, -217.2119140625, -244.0914306640625,
-                -251.3134765625, -269.43701171875, -273.569091796875, -266.1756591796875]
-    plot_loss('Loss for Prefix Window: 2 Sec and Different Suffix Windows', 'suffix window (sec)', suffix_x, suffix_y)
+    # suffix_x = [2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7]
+    # suffix_y = [-179.7879638671875, -192.915771484375, -214.9764404296875, -217.2119140625, -244.0914306640625,
+    #             -251.3134765625, -269.43701171875, -273.569091796875, -266.1756591796875]
+    # plot_loss('Loss for Prefix Window: 2 Sec and Different Suffix Windows', 'suffix window (sec)', suffix_x, suffix_y)
+
+
+

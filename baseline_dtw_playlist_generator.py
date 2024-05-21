@@ -5,15 +5,12 @@ import numpy as np
 import os
 from utils import Graph, fadeout_cur_fadein_next, get_partial_audio
 from utils import show_dtw_cost_matrix_and_wp  # for debug
-from spleeter.separator import Separator
 
 
-os.environ['HF_HOME'] = '/home/joberant/NLP_2324/yaelshemesh'
+HOME_PATH = '/home/joberant/NLP_2324/yaelshemesh'
+DEFAULT_OUT_PATH = "outputs"
 
-
-# songs_list_dir = '/home/yandex/APDL2324a/group_7/haviv_playlist/'
-# SONGS_LIST_DIR = '/home/joberant/NLP_2324/yaelshemesh/concert_songs/'
-SONGS_LIST_DIR = '/mnt/c/Users/ofirn/Music/songs/'
+SONGS_LIST_DIR = 'yael_playlist'
 NO_VOCAL_DETECTION_THRESHOLD = 5  # dB ; Threshold for silence detection in the vocals energy array.
 NOISE_THRESHOLD_FOR_TRANSFORMATION = 0  # dB ; Threshold for silence detection in transformation.
 MIN_SIZE_OF_TIME_INTERVAL = 2  # sec ; Minimum size of time interval for silence detection.
@@ -22,8 +19,10 @@ JUMP = 2  # Minimum number of frames between two silent intervals to consider th
 FADE_DURATION = 2.0  # sec ; Duration of the fade in and fade out effects.
 
 
-def connect_between_songs_by_dtw_only(song1: Song, song2: Song, file_path: str, song_builder: Song=None, accompaniment=False, pick_idx_method='min_dist_in_path'):
-    print(f"Concat {songs[i].song_name} and {songs[i+1].song_name} using DTW method (over chroma stft of the songs)")
+def connect_between_songs_by_dtw_only(song1: Song, song2: Song, file_path: str, song_builder: Song=None,
+                                      accompaniment=False, pick_idx_method='min_dist_in_path',
+                                      fade_duration=FADE_DURATION):
+    print(f"Concat {song1.song_name} and {song2.song_name} using DTW method (over chroma stft of the songs)")
     assert song1.sr == song2.sr, "sample rate should be the same in both songs"
     
     # Get suffix of song1 and prefix of song2
@@ -52,10 +51,13 @@ def connect_between_songs_by_dtw_only(song1: Song, song2: Song, file_path: str, 
     
     # Among chosen indeces by the above methods, choose index in which suffix is not scilent:
     first_audio = None
+    second_audio = None
+    first_song = song_builder if song_builder is not None else song1
+    best_tuple_in_sec = None
+
     for idx in sorted_indexes:
         idx += window_in_sec  # wp start from max to min. By increasing idx by window, we get the beginning of the match
         suffix_cut_frame, prefix_cut_frame = wp[idx]
-        first_song = song_builder if song_builder is not None else song1
         prefix_cut_audio_index = prefix_cut_frame * 512
         suffix_cut_audio_index = len(first_song.audio) - (len(suffix_audio) - suffix_cut_frame * 512)
         first_audio = first_song.audio[: suffix_cut_audio_index]
@@ -66,8 +68,8 @@ def connect_between_songs_by_dtw_only(song1: Song, song2: Song, file_path: str, 
             break
 
     # Concat songs with overlapping fade and save new song:
-    # new_audio = fadeout_cur_fadein_next(first_audio, second_audio, song1.sr, duration=FADE_DURATION)
-    new_audio = np.concatenate([first_audio, second_audio])
+    new_audio = fadeout_cur_fadein_next(first_audio, second_audio, song1.sr, duration=fade_duration)
+    # new_audio = np.concatenate([first_audio, second_audio])
     sf.write(file_path, new_audio, first_song.sr)
     new_song = Song(file_path)
     return new_song, best_tuple_in_sec
@@ -131,7 +133,8 @@ def dtw_over_songs_intervals_post_spleeter(song1: Song, song2: Song, song1_suffi
     return min_i, min_j, wp[min_idx]
 
 
-def concat_between_songs_post_spleeter(song1: Song, song2: Song, file_path: str, song_builder: Song = None):
+def concat_between_songs_post_spleeter(song1: Song, song2: Song, file_path: str, song_builder: Song = None,
+                                       fade_duration=FADE_DURATION):
     print(f"Concat {song1.song_name} and {song2.song_name} using vocals and accompaniment separation then dtw")
     assert song1.sr == song2.sr, "sample rate should be the same in both songs"
     
@@ -156,8 +159,8 @@ def concat_between_songs_post_spleeter(song1: Song, song2: Song, file_path: str,
     first_song = song_builder if song_builder is not None else song1
     first = first_song.get_partial_audio(end_sec=len(first_song.audio)/song1.sr - song1.partial_audio_time_in_sec + song1_suffix_scilent_intervals[min_i][0] + suffix_cut_audio_index/song1.sr)
     second = song2.get_partial_audio(prefix_cut_audio_index/song2.sr + song2_prefix_scilent_intervals[min_j][0])
-    #new_audio = fadeout_cur_fadein_next(first, second, song1.sr, duration=FADE_DURATION)
-    new_audio = np.concatenate([first, second])
+    new_audio = fadeout_cur_fadein_next(first, second, song1.sr, duration=fade_duration)
+    # new_audio = np.concatenate([first, second])
 
     sf.write(file_path, new_audio, first_song.sr)
     new_song = Song(file_path)
@@ -193,7 +196,7 @@ def organize_song_list_using_dtw_greedy(songs):
     return organized_songs
 
 
-def organize_song_list_using_dtw_optimum_aproximation(songs):
+def organize_song_list_using_dtw_optimum_approximation(songs):
     # create graph of songs with edges between each two songs with the cost of the dtw between them
     n = len(songs)
     g = Graph(n)
@@ -225,47 +228,72 @@ def organize_song_list_using_tempo(songs):
     return songs
 
 
-if __name__ == '__main__':
-    song_names = os.listdir(SONGS_LIST_DIR)
+def create_full_playlist_using_dtw(outpath, songs_list_dir, home_directory, use_spleeter=False, save_numpy_arrays=False,
+                                   fade_duration=FADE_DURATION):
+    song_names = os.listdir(songs_list_dir)
     songs = []
-    # get all files from dir to song_names list:
-    # sep = Separator('spleeter:2stems')
     sep = None
+    if use_spleeter:
+        from spleeter.separator import Separator
+        sep = Separator('spleeter:2stems')
+    spleeter_output_dir_path = os.path.join(home_directory, 'spleeter_output')
+    os.makedirs(spleeter_output_dir_path, exist_ok=True)
+
+    # Get all files from dir to song_names list:
     for song_name in song_names:
         print(f"parsing: {song_name}")
-        song = Song(SONGS_LIST_DIR + f"{song_name}", seperator=sep, remove_zero_amp=True)
+        song = Song(os.path.join(songs_list_dir, f"{song_name}"),  seperator=sep, remove_zero_amp=True)
         song.partial_audio_time_in_sec = 45
-        time_in_sec = song.partial_audio_time_in_sec
         # song.calc_tempo()
-        # if not os.path.exists(f"/home/joberant/NLP_2324/yaelshemesh/spleeter_output/{song_name}"):
-        #     os.mkdir(f"/home/joberant/NLP_2324/yaelshemesh/spleeter_output/{song_name}")
-        # song.find_vocals_and_accompaniment_for_suffix_and_prefix(dir_path=f"/home/joberant/NLP_2324/yaelshemesh/spleeter_output/{song_name}")
-        # song.get_prefix_and_suffix_energy_array_post_separation()
+        if use_spleeter:
+            os.makedirs(os.path.join(spleeter_output_dir_path, song_name),  exist_ok=True)
+            song.find_vocals_and_accompaniment_for_suffix_and_prefix(dir_path=os.path.join(spleeter_output_dir_path,
+                                                                                           song_name))
+            song.get_prefix_and_suffix_energy_array_post_separation()
         songs.append(song)
-        
-        # song.suffix_vocals.plotter.plot_energy_and_rms(threshold=no_vocal_detection_threshold, plot_rms=True, title="suffix_vocal")
-        # song.prefix_vocals.plotter.plot_energy_and_rms(threshold=no_vocal_detection_threshold, plot_rms=True, title="prefix_vocal")
 
-        # suffix_song.plotter.plot_mel_spectogram()
-
+    # Set songs order and print result:
+    songs = organize_song_list_using_dtw_optimum_approximation(songs)
     # songs = organize_song_list_using_tempo(songs)
-    songs = organize_song_list_using_dtw_optimum_aproximation(songs)
-    #songs = organize_song_list_using_dtw_greedy(songs)
+    # songs = organize_song_list_using_dtw_greedy(songs)
     print([song.song_name for song in songs])
     new_song = songs[0]
     print('concatinating songs...')
-    outpath = "/mnt/c/Users/ofirn/Downloads/np/dtw_outputs"
     result_fp = os.path.join(outpath, 'dtw_concat_playlist.wav')
     tuples_cuts_in_sec = []
-    for i in range(len(songs)-1):
-        #new_song = concat_between_songs_post_spleeter(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song)
-        new_song, best_tuple_cuts_in_sec = connect_between_songs_by_dtw_only(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song)
-        tuples_cuts_in_sec.append(best_tuple_cuts_in_sec)
-        # new_song = connect_between_songs_by_dtw_only(songs[i], songs[i+1], file_path=result_fp, song_builder=new_song, accompaniment=True)
-    sf.write(result_fp, new_song.audio, new_song.sr)
-    full_playlist_audio = new_song.audio
-    np.save(os.path.join(outpath, f'baseline_playlister_playlist_numpy.npy'), full_playlist_audio)
-    np.save(os.path.join(outpath, f'baseline_songs_name_order.npy'), np.array([song.song_name for song in songs]))
-    np.save(os.path.join(outpath, f'best_cuts_in_sec.npy'), np.array(tuples_cuts_in_sec))
+    for i in range(len(songs) - 1):
+        if use_spleeter:
+            new_song = concat_between_songs_post_spleeter(songs[i], songs[i+1], file_path=result_fp,
+                                                          song_builder=new_song, fade_duration=fade_duration)
+            # new_song = connect_between_songs_by_dtw_only(songs[i], songs[i+1], file_path=result_fp,
+            #                                              song_builder=new_song, accompaniment=True)
 
-    
+        else:
+            new_song, best_tuple_cuts_in_sec = connect_between_songs_by_dtw_only(songs[i], songs[i + 1],
+                                                                                 file_path=result_fp,
+                                                                                 song_builder=new_song,
+                                                                                 fade_duration=fade_duration)
+            tuples_cuts_in_sec.append(best_tuple_cuts_in_sec)
+    sf.write(result_fp, new_song.audio, new_song.sr)
+    if save_numpy_arrays:
+        np.save(os.path.join(outpath, f'baseline_playlister_playlist_numpy.npy'), new_song.audio)
+        np.save(os.path.join(outpath, f'baseline_songs_name_order.npy'), np.array([song.song_name for song in songs]))
+        np.save(os.path.join(outpath, f'best_cuts_in_sec.npy'), np.array(tuples_cuts_in_sec))
+
+
+if __name__ == '__main__':
+
+    import argparse
+    parser = argparse.ArgumentParser(description='Playlister DTW baseline implementation. Saves the playlist as one audio file.')
+    parser.add_argument("--home_dir", type=str, default=HOME_PATH, help='split songs saved here')
+    parser.add_argument("--songs_dir", type=str, default=SONGS_LIST_DIR, help='directory with songs that you wish to create a playlist out of them')
+    parser.add_argument("--outpath", type=str, default=DEFAULT_OUT_PATH, help='the output playlist and numpy arrays will be saved here')
+    parser.add_argument("--fade_duration", type=float, default=FADE_DURATION, help='fade duration. used in playlister_playlist_fader.wav file')
+    parser.add_argument("--use_spleeter", action='store_true', default=False,
+                        help='whether to use spleeter and choose the transition point based only on the accompaniment or not')
+
+    args = parser.parse_args()
+    os.environ['HF_HOME'] = args.home_dir
+
+    create_full_playlist_using_dtw(args.songs_dir, args.outpath, home_directory=args.home_dir,
+                                   use_spleeter=args.use_spleeter, fade_duration=args.fade_duration)

@@ -1,13 +1,13 @@
 import os
-
 import numpy as np
 from song_handler import Song
 import torch
 from utils import Graph, fadeout_cur_fadein_next, save_audio_file
-from transformers import AutoTokenizer, MusicgenForConditionalGeneration
+from transformers import MusicgenForConditionalGeneration
 
 PATH = '/home/joberant/NLP_2324/yaelshemesh'
-os.environ['HF_HOME'] = PATH
+DEFAULT_OUT_PATH = 'outputs'
+DEFAULT_SONGS_DIR = 'yael_playlist'
 
 DEVICE = 'cuda'
 
@@ -22,6 +22,8 @@ FULL_WINDOW_SECONDS = 45
 
 BATCH_SIZE = 25
 ENERGY_THRESHOLD = 10
+
+TOKEN_LENGTH_IN_SECONDS = 0.02
 
 
 def calculate_log_prob_of_sequence_given_another_sequence(token_sequence_1, token_sequence_2, model, text_tokens=None,
@@ -113,12 +115,12 @@ def get_transition_indices_list(song: Song, number_of_tokens, suffix=True):
     return transition_indices
 
 
-def connect_between_songs(song1: Song, song2: Song, use_accompaniment=False):
+def connect_between_songs(song1: Song, song2: Song, home_directory, use_accompaniment=False):
     assert song1.sr == song2.sr
     import math
     print("connect")
     print("load_model")
-    model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small", cache_dir=PATH)
+    model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small", cache_dir=home_directory)
     print("encode")
     audio_encoder = model.audio_encoder
 
@@ -173,47 +175,20 @@ def connect_between_songs(song1: Song, song2: Song, use_accompaniment=False):
     print(f"Total Log Sum Probability: {best_prob}")
     print(f"Best tuple: {best_tuple}")
 
-    # concat_audio = np.concatenate(
-    #     [song1.get_partial_audio(end_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02),
-    #      song2.get_partial_audio(start_sec=best_tuple[1] * 0.02)])
-    # save_audio_file(f'{song1.song_name} + {song2.song_name}_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
-    # save_audio_file(f'{song1.song_name} + {song2.song_name}_no_fader.wav', concat_audio, song1.sr)
-    #
-    # concat_audio = np.concatenate(
-    #     [song1.get_partial_audio(start_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + best_tuple[0] * 0.02,
-    #                              end_sec=len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02),
-    #      song2.get_partial_audio(start_sec=best_tuple[1] * 0.02,
-    #                              end_sec=best_tuple[1] * 0.02 + WINDOW_SIZE_SAMPLES_PREFIX * 0.02)])
-    # save_audio_file(f'{song1.song_name} + {song2.song_name}_partial_{best_tuple}_{best_prob}.wav', concat_audio, song1.sr)
-
-    print(f'Best indices: {best_tuple}')
-
-    # concat_audio = fadeout_cur_fadein_next(
-    #     song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02, len(song1.audio))),
-    #     song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
-    #     duration=FADE_DURATION)
-    #
-    # save_audio_file(f'{song1.song_name} + {song2.song_name}_long_fader.wav', concat_audio, song1.sr)
-    #
-    # concat_audio = fadeout_cur_fadein_next(
-    #     song1.get_partial_audio(end_sec=min(len(song1.audio) / song1.sr - FULL_WINDOW_SECONDS + (best_tuple[0] + WINDOW_SIZE_SAMPLES_SUFFIX) * 0.02, len(song1.audio))),
-    #     song2.get_partial_audio(start_sec=best_tuple[1]*0.02), song1.sr,
-    #     duration=1)
-    #
-    # save_audio_file(f'{song1.song_name} + {song2.song_name}_short_fader.wav', concat_audio, song1.sr)
-
     return best_prob, best_tuple
 
 
-def create_full_playlist(songs_dir, outpath='/home/joberant/NLP_2324/yaelshemesh/outputs/haviv_10/musicgen_spleeter/',  use_accompaniment=False):
+def create_full_playlist(songs_dir, outpath, home_directory=PATH, use_accompaniment=False, fade_duration=FADE_DURATION):
     print("create_play list")
     number_of_songs = len(os.listdir(songs_dir))
     file_names_list = os.listdir(songs_dir)
     songs_list = [Song(os.path.join(songs_dir, file_names_list[i]), sr=32000) for i in range(number_of_songs)]
-    
+
     if use_accompaniment:
         from utils import songs_spleeter
-        songs_spleeter(songs_list, time_in_sec=FULL_WINDOW_SECONDS, spleeter_output_dir_path='/home/joberant/NLP_2324/yaelshemesh/spleeter_output')
+        spleeter_output_dir_path = os.path.join(home_directory, 'spleeter_output')
+        os.makedirs(spleeter_output_dir_path, exist_ok=True)
+        songs_spleeter(songs_list, time_in_sec=FULL_WINDOW_SECONDS, spleeter_output_dir_path=spleeter_output_dir_path)
 
     print("finish load songs")
     adjacency_matrix = np.ones((number_of_songs, number_of_songs)) * np.inf
@@ -226,7 +201,8 @@ def create_full_playlist(songs_dir, outpath='/home/joberant/NLP_2324/yaelshemesh
             if i == j:
                 continue
             song2 = songs_list[j]
-            best_prob, best_tuple = connect_between_songs(song1, song2, use_accompaniment=use_accompaniment)
+            best_prob, best_tuple = connect_between_songs(song1, song2, home_directory,
+                                                          use_accompaniment=use_accompaniment)
             adjacency_matrix[i, j] = best_prob
             cut_indices_suffix[i, j] = best_tuple[0]
             cut_indices_prefix[i, j] = best_tuple[1]
@@ -255,13 +231,11 @@ def create_full_playlist(songs_dir, outpath='/home/joberant/NLP_2324/yaelshemesh
         full_playlist_audio = np.concatenate([full_playlist_audio, curr_song_partial_audio])
         if i != 0:
             full_playlist_audio_fader = fadeout_cur_fadein_next(full_playlist_audio_fader, curr_song_partial_audio,
-                                                                32000, duration=FADE_DURATION)
+                                                                32000, duration=fade_duration)
         else:
             full_playlist_audio_fader = curr_song_partial_audio
 
     try:
-        np.save(os.path.join(outpath, f'playlister_playlist_numpy.npy'), full_playlist_audio)
-        np.save(os.path.join(outpath, f'playlister_playlist_fader_numpy.npy'), full_playlist_audio_fader)
         np.save(os.path.join(outpath, f'songs_name_order.npy'), np.array(songs_name_order))
         np.save(os.path.join(outpath, f'adjacency_matrix.npy'), adjacency_matrix)
         np.save(os.path.join(outpath, f'cut_indices_suffix_window_{WINDOW_SIZE_SAMPLES_SUFFIX}_hop_{HOP_SIZE_SAMPLES}.npy'),
@@ -277,30 +251,17 @@ def create_full_playlist(songs_dir, outpath='/home/joberant/NLP_2324/yaelshemesh
 
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Playlister MusicGen implementation. Saves the playlist as one audio file.')
+    parser.add_argument("--home_dir", type=str, default=PATH, help='model cache will be saved here')
+    parser.add_argument("--songs_dir", type=str, default=DEFAULT_SONGS_DIR, help='directory with songs that you wish to create a playlist out of them')
+    parser.add_argument("--outpath", type=str, default=DEFAULT_OUT_PATH, help='the output playlist and numpy arrays will be saved here')
+    parser.add_argument("--fade_duration", type=float, default=FADE_DURATION, help='fade duration. used in playlister_playlist_fader.wav file')
+    parser.add_argument("--use_spleeter", action='store_true', default=False,
+                        help='whether to use spleeter and choose the transition point based only on the accompaniment or not')
 
-    create_full_playlist('/home/joberant/NLP_2324/yaelshemesh/yael_playlist',
-                         outpath='/home/joberant/NLP_2324/yaelshemesh/playlister_project/playlister_outputs_ofir/yael/s_5_p_3',  use_accompaniment=False)
-    # song1 = Song(f"../eyal/yafyufa.mp3", sr=32000)
-    # song2 = Song(f"../eyal/malkat hayofi.mp3", sr=32000)
-    # connect_between_songs(song1, song2)
-    #
-    # songs_pairs = np.array([[(song_name_1, song_name_2) for song_name_1 in os.listdir("../eyal")] for song_name_2 in os.listdir("../eyal")])
-    # songs_pairs = songs_pairs.reshape((songs_pairs.shape[0] * songs_pairs.shape[1], 2))
-    # np.random.shuffle(songs_pairs)
-    #
-    # for song_name_1, song_name_2 in songs_pairs:
-    #     print(song_name_1, song_name_2)
-    #     if song_name_1 == song_name_2:
-    #         continue
-    #     try:
-    #         song1 = Song(f"../eyal/{song_name_1}", sr=32000)
-    #         song2 = Song(f"../eyal/{song_name_2}", sr=32000)
-    #
-    #         # song1 = Song("../songs/Wish You Were Here - Incubus - Lyrics.mp3", sr=32000)
-    #         # song2 = Song("../songs/Incubus - Drive.mp3", sr=32000)
-    #
-    #     except Exception as e:
-    #         continue
-    #     connect_between_songs(song1, song2)
+    args = parser.parse_args()
+    os.environ['HF_HOME'] = args.home_dir
 
-
+    create_full_playlist(args.songs_dir, args.outpath, home_directory=args.home_dir,
+                         use_accompaniment=args.use_spleeter, fade_duration=args.fade_duration)
