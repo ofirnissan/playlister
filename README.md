@@ -1,18 +1,18 @@
-# Creating a playlist using musicgen (run with single GPU):
+## Creating a playlist using musicgen (run with single GPU):
 python -u musicgen_based_playlist_generator.py --home_dir <YOUR HOME DIR> --songs_dir <Directory path with mp3 files> --outpath <Directory path for saving the results> --fade_duration 2
 
 
-# Creating a playlist using DTW (baseline)
+## Creating a playlist using DTW (baseline)
 command line running example (run on CPU)
 python -u baseline_dtw_playlist_generator.py --home_dir <YOUR HOME DIR> --songs_dir <Directory path with mp3 files> --outpath <Directory path for saving the results> --fade_duration 2
 
 
-# Other tools:
-## Characterize hyper params to find the best fit:
+## Other tools:
+### Characterize hyper params to find the best fit:
 command line running example (run on single GPU)
 python -u find_hyper_params.py --home_dir <YOUR HOME DIR> --songs_dir <Directory path with mp3 files>
 
-## Saves plot represents evaluations based on tempo metrics (saves result to current directory):
+### Saves plot represents evaluations based on tempo metrics (saves result to current directory):
 command line running example (run on CPU)
 python evaluate_using_tempo.py
 
