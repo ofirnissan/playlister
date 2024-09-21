@@ -1,3 +1,15 @@
+# The Playlister
+The Playlister is an audio processing and deep learning project. It tackles two main challenges:
+
+* Transition point selection - Selecting the best transition point between two consecutive songs in a playlist.
+* Songs listing - Optimizing the order of songs to ensure smooth transitions.
+
+_View "Playlister.pdf" for project summary and docummentation._
+
+
+## Quick Introduction:
+Music generative model creates new pieces of music autonomously. As part of the model’s flow, it calculates the conditional probabilities (given some piece of audio). This project main idea is to extract these probabilities and use them for songs listing and transition points selection. We use the DTW algorithm as baseline solution for the same problems.
+
 ## Creating a playlist using musicgen:
 Run with single GPU
 
