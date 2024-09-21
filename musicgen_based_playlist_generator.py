@@ -180,6 +180,7 @@ def connect_between_songs(song1: Song, song2: Song, home_directory, use_accompan
 
 def create_full_playlist(songs_dir, outpath, home_directory=PATH, use_accompaniment=False, fade_duration=FADE_DURATION):
     print("create_play list")
+    assert os.path.exists(outpath)
     number_of_songs = len(os.listdir(songs_dir))
     file_names_list = os.listdir(songs_dir)
     songs_list = [Song(os.path.join(songs_dir, file_names_list[i]), sr=32000) for i in range(number_of_songs)]
